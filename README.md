@@ -1,11 +1,42 @@
-<div align="center">
+# OPM-Pro v1
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+OPM-Pro is a professional Object-Process Methodology (OPM) modeling tool built with React and Konva. It allows users to create, edit, and export OPM models following the ISO 19450 standard.
 
-  <h1>Built with AI Studio</h2>
+## Features
 
-  <p>The fastest path from prompt to production with Gemini.</p>
+- **Standard OPM Elements**: Create Objects, Processes, and States.
+- **Hierarchical Modeling**: Support for in-zooming (nested subprocesses) and states within objects.
+- **Procedural & Structural Links**: Full support for Agent, Instrument, Consumption, Result, Effect, Aggregation, Exhibition, Generalization, and Instantiation links.
+- **Automatic OPL Generation**: Real-time generation of Object-Process Language (OPL) sentences.
+- **Cardinality Support**: Specify and display cardinality/multiplicity for all link types.
+- **Surface-Bound Anchors**: Links automatically snap to the boundaries of elements.
+- **Import/Export**: Save and load your models as JSON files.
 
-  <a href="https://aistudio.google.com/apps">Start building</a>
+## Prerequisites
 
-</div>
+- **Node.js**: Version 18 or higher is recommended.
+- **npm**: Usually comes bundled with Node.js.
+
+## Installation
+
+1. Clone or download the project files.
+2. Open a terminal or command prompt in the project root directory.
+3. Install the required dependencies:
+   ```bash
+   npm install
+   ```
+
+## Running the Application
+
+To start the development server:
+```bash
+npm run dev
+```
+The application will be available at `http://localhost:3000`.
+
+## Project Structure
+
+- `src/App.tsx`: Main application logic and UI.
+- `src/types.ts`: TypeScript interfaces for OPM elements and links.
+- `src/services/oplService.ts`: Logic for generating OPL sentences.
+- `src/index.css`: Global styles and Tailwind CSS configuration.
