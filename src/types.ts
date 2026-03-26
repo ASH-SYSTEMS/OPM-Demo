@@ -17,6 +17,9 @@ export enum LinkType {
   EFFECT = 'EFFECT',
   AGENT = 'AGENT',
   INSTRUMENT = 'INSTRUMENT',
+  CONDITION = 'CONDITION',
+  EVENT = 'EVENT',
+  EXCEPTION = 'EXCEPTION',
 }
 
 export interface OPMElement {
@@ -30,6 +33,8 @@ export interface OPMElement {
   parentId?: string; // For states inside objects
   isInitial?: boolean;
   isFinal?: boolean;
+  isPhysical?: boolean;
+  isEnvironmental?: boolean;
 }
 
 export interface OPMLink {

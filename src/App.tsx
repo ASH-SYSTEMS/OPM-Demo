@@ -13,12 +13,15 @@ import {
   Share2,
   MousePointer2,
   Type as TypeIcon,
-  Layers
+  Layers,
+  HelpCircle
 } from 'lucide-react';
 import { ElementType, LinkType, OPMElement, OPMLink, OPMModel } from './types';
 import { generateOPL } from './services/oplService';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import HelpModal from './components/HelpModal';
+import OPMIcon from './components/OPMIcon';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -34,6 +37,7 @@ export default function App() {
   const [tool, setTool] = useState<'select' | 'procedural' | ElementType | LinkType>('select');
   const [linkingSource, setLinkingSource] = useState<string | null>(null);
   const [stageSize, setStageSize] = useState({ width: window.innerWidth - 400, height: window.innerHeight - 64 });
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
 
   const stageRef = useRef<any>(null);
 
@@ -125,7 +129,7 @@ export default function App() {
     switch (type) {
       case LinkType.AGENT:
       case LinkType.INSTRUMENT:
-        return sourceIsObject && targetIsProcess;
+        return (sourceIsObject || sourceIsState) && targetIsProcess;
       case LinkType.CONSUMPTION:
         return (sourceIsObject || sourceIsState) && targetIsProcess;
       case LinkType.RESULT:
@@ -133,12 +137,15 @@ export default function App() {
       case LinkType.EFFECT:
         return (sourceIsProcess && (targetIsObject || targetIsState)) || 
                ((sourceIsObject || sourceIsState) && targetIsProcess);
+      case LinkType.CONDITION:
+      case LinkType.EVENT:
+      case LinkType.EXCEPTION:
+        return (sourceIsObject || sourceIsState) && targetIsProcess;
       case LinkType.AGGREGATION:
       case LinkType.GENERALIZATION:
       case LinkType.INSTANTIATION:
         return (sourceIsObject && targetIsObject) || (sourceIsProcess && targetIsProcess);
       case LinkType.EXHIBITION:
-        // Exhibition is the most flexible structural link
         return (sourceIsObject || sourceIsProcess) && (targetIsObject || targetIsProcess);
       default:
         return false;
@@ -286,13 +293,14 @@ export default function App() {
 
   const oplSentences = generateOPL(model);
 
-  const getAbsolutePosition = (el: OPMElement) => {
+  const getAbsolutePosition = (el: OPMElement): { x: number, y: number, width: number, height: number } => {
     if (el.parentId) {
       const parent = model.elements.find(p => p.id === el.parentId);
       if (parent) {
+        const parentPos = getAbsolutePosition(parent);
         return {
-          x: parent.x + el.x,
-          y: parent.y + el.y,
+          x: parentPos.x + el.x,
+          y: parentPos.y + el.y,
           width: el.width,
           height: el.height
         };
@@ -309,53 +317,55 @@ export default function App() {
     const sourcePos = getAbsolutePosition(sourceEl);
     const targetPos = getAbsolutePosition(targetEl);
 
-    const fromX = link.sourceAnchor ? sourcePos.x + link.sourceAnchor.x * sourcePos.width : sourcePos.x + sourcePos.width / 2;
-    const fromY = link.sourceAnchor ? sourcePos.y + link.sourceAnchor.y * sourcePos.height : sourcePos.y + sourcePos.height / 2;
-    const toX = link.targetAnchor ? targetPos.x + link.targetAnchor.x * targetPos.width : targetPos.x + targetPos.width / 2;
-    const toY = link.targetAnchor ? targetPos.y + link.targetAnchor.y * targetPos.height : targetPos.y + targetPos.height / 2;
+    const snapToBoundary = (absX: number, absY: number, el: { x: number, y: number, width: number, height: number }, type: ElementType) => {
+      const cx = el.x + el.width / 2;
+      const cy = el.y + el.height / 2;
+      const dx = absX - cx;
+      const dy = absY - cy;
+
+      if (type === ElementType.OBJECT || type === ElementType.STATE) {
+        const absDx = Math.abs(dx);
+        const absDy = Math.abs(dy);
+        const halfW = el.width / 2;
+        const halfH = el.height / 2;
+
+        if (absDx / halfW > absDy / halfH) {
+          return {
+            x: (dx > 0 ? halfW : -halfW) / el.width + 0.5,
+            y: (dy * (halfW / absDx)) / el.height + 0.5
+          };
+        } else {
+          return {
+            x: (dx * (halfH / absDy)) / el.width + 0.5,
+            y: (dy > 0 ? halfH : -halfH) / el.height + 0.5
+          };
+        }
+      } else {
+        const a = el.width / 2;
+        const b = el.height / 2;
+        const angle = Math.atan2(dy, dx);
+        return {
+          x: (a * Math.cos(angle)) / el.width + 0.5,
+          y: (b * Math.sin(angle)) / el.height + 0.5
+        };
+      }
+    };
+
+    const sourceCenter = { x: sourcePos.x + sourcePos.width / 2, y: sourcePos.y + sourcePos.height / 2 };
+    const targetCenter = { x: targetPos.x + targetPos.width / 2, y: targetPos.y + targetPos.height / 2 };
+
+    const sAnchor = link.sourceAnchor || snapToBoundary(targetCenter.x, targetCenter.y, sourcePos, sourceEl.type);
+    const tAnchor = link.targetAnchor || snapToBoundary(sourceCenter.x, sourceCenter.y, targetPos, targetEl.type);
+
+    const fromX = sourcePos.x + sAnchor.x * sourcePos.width;
+    const fromY = sourcePos.y + sAnchor.y * sourcePos.height;
+    const toX = targetPos.x + tAnchor.x * targetPos.width;
+    const toY = targetPos.y + tAnchor.y * targetPos.height;
 
     const angle = Math.atan2(toY - fromY, toX - fromX);
     const isSelected = selectedLinkId === link.id;
     
-    const snapToBoundary = (absX: number, absY: number, el: { x: number, y: number, width: number, height: number }, type: ElementType) => {
-    const cx = el.x + el.width / 2;
-    const cy = el.y + el.height / 2;
-    const dx = absX - cx;
-    const dy = absY - cy;
-
-    if (type === ElementType.OBJECT || type === ElementType.STATE) {
-      // Snap to rectangle boundary
-      const absDx = Math.abs(dx);
-      const absDy = Math.abs(dy);
-      const halfW = el.width / 2;
-      const halfH = el.height / 2;
-
-      if (absDx / halfW > absDy / halfH) {
-        // Snap to left or right
-        return {
-          x: (dx > 0 ? halfW : -halfW) / el.width + 0.5,
-          y: (dy * (halfW / absDx)) / el.height + 0.5
-        };
-      } else {
-        // Snap to top or bottom
-        return {
-          x: (dx * (halfH / absDy)) / el.width + 0.5,
-          y: (dy > 0 ? halfH : -halfH) / el.height + 0.5
-        };
-      }
-    } else {
-      // Snap to ellipse boundary
-      const a = el.width / 2;
-      const b = el.height / 2;
-      const angle = Math.atan2(dy, dx);
-      return {
-        x: (a * Math.cos(angle)) / el.width + 0.5,
-        y: (b * Math.sin(angle)) / el.height + 0.5
-      };
-    }
-  };
-
-  const handleAnchorDrag = (id: string, isSource: boolean, e: any) => {
+    const handleAnchorDrag = (id: string, isSource: boolean, e: any) => {
     const { x: absX, y: absY } = e.target.attrs;
     const link = model.links.find(l => l.id === id);
     if (!link) return;
@@ -499,6 +509,35 @@ export default function App() {
       );
     }
 
+    // Control Links (Condition, Event, Exception)
+    if (link.type === LinkType.CONDITION || link.type === LinkType.EVENT || link.type === LinkType.EXCEPTION) {
+      return (
+        <Group key={link.id}>
+          <Arrow
+            points={[fromX, fromY, toX, toY]}
+            {...commonProps}
+            fill={linkColor}
+            pointerLength={12}
+            pointerWidth={10}
+          />
+          <Group x={fromX} y={fromY} rotation={(angle * 180) / Math.PI}>
+            <KonvaCircle radius={8} fill="white" stroke={linkColor} strokeWidth={2} />
+            {link.type === LinkType.EVENT && (
+              <Arrow points={[-4, 0, 4, 0]} fill={linkColor} stroke={linkColor} strokeWidth={1} pointerLength={4} pointerWidth={4} />
+            )}
+            {link.type === LinkType.EXCEPTION && (
+              <Group>
+                <Line points={[-4, -4, 4, 4]} stroke={linkColor} strokeWidth={2} />
+                <Line points={[-4, 4, 4, -4]} stroke={linkColor} strokeWidth={2} />
+              </Group>
+            )}
+          </Group>
+          {renderCardinality()}
+          {renderHandles()}
+        </Group>
+      );
+    }
+
     return <Line key={link.id} points={[fromX, fromY, toX, toY]} {...commonProps} />;
   };
 
@@ -531,10 +570,12 @@ export default function App() {
             fill="white" 
             stroke={isSelected ? '#4f46e5' : '#1e293b'} 
             strokeWidth={isSelected ? 3 : 2} 
+            dash={el.isEnvironmental ? [5, 5] : undefined}
             cornerRadius={2} 
-            shadowBlur={isSelected ? 15 : 0} 
-            shadowColor="#4f46e5" 
-            shadowOpacity={0.2} 
+            shadowBlur={el.isPhysical ? 10 : (isSelected ? 15 : 0)} 
+            shadowColor={el.isPhysical ? "#000000" : "#4f46e5"} 
+            shadowOpacity={el.isPhysical ? 0.4 : 0.2} 
+            shadowOffset={el.isPhysical ? { x: 4, y: 4 } : { x: 0, y: 0 }}
           />
         ) : el.type === ElementType.PROCESS ? (
           <Ellipse 
@@ -545,9 +586,11 @@ export default function App() {
             fill="white" 
             stroke={isSelected ? '#4f46e5' : '#1e293b'} 
             strokeWidth={isSelected ? 3 : 2} 
-            shadowBlur={isSelected ? 15 : 0} 
-            shadowColor="#4f46e5" 
-            shadowOpacity={0.2} 
+            dash={el.isEnvironmental ? [5, 5] : undefined}
+            shadowBlur={el.isPhysical ? 10 : (isSelected ? 15 : 0)} 
+            shadowColor={el.isPhysical ? "#000000" : "#4f46e5"} 
+            shadowOpacity={el.isPhysical ? 0.4 : 0.2} 
+            shadowOffset={el.isPhysical ? { x: 4, y: 4 } : { x: 0, y: 0 }}
           />
         ) : (
           <Group>
@@ -594,11 +637,17 @@ export default function App() {
       <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0 z-10 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-indigo-200 shadow-lg">
-            <Settings className="text-white w-6 h-6" />
+            <OPMIcon className="text-white w-6 h-6" />
           </div>
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">OPM-Pro v1</h1>
         </div>
         <div className="flex items-center gap-2">
+          <button 
+            onClick={() => setIsHelpOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-xl hover:bg-slate-200 transition-colors shadow-sm font-medium text-sm border border-slate-200"
+          >
+            <HelpCircle className="w-4 h-4" /> Help
+          </button>
           <label className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-xl hover:bg-slate-200 transition-colors shadow-sm font-medium text-sm cursor-pointer border border-slate-200">
             <Share2 className="w-4 h-4" /> Import Model
             <input type="file" accept=".json" onChange={handleImport} className="hidden" />
@@ -621,6 +670,9 @@ export default function App() {
           <div className="w-10 h-px bg-slate-100 mx-auto" />
           <ToolButton active={tool === LinkType.AGENT} onClick={() => setTool(LinkType.AGENT)} icon={<div className="w-5 h-5 border-2 border-slate-600 rounded-full flex items-center justify-center"><div className="w-1.5 h-1.5 bg-slate-600 rounded-full" /></div>} label="Agent" />
           <ToolButton active={tool === LinkType.INSTRUMENT} onClick={() => setTool(LinkType.INSTRUMENT)} icon={<div className="w-5 h-5 border-2 border-slate-600 rounded-full" />} label="Instrument" />
+          <ToolButton active={tool === LinkType.CONDITION} onClick={() => setTool(LinkType.CONDITION)} icon={<div className="w-5 h-5 border-2 border-slate-600 rounded-full flex items-center justify-center text-[10px] font-bold">c</div>} label="Condition" />
+          <ToolButton active={tool === LinkType.EVENT} onClick={() => setTool(LinkType.EVENT)} icon={<div className="w-5 h-5 border-2 border-slate-600 rounded-full flex items-center justify-center text-[10px] font-bold">e</div>} label="Event" />
+          <ToolButton active={tool === LinkType.EXCEPTION} onClick={() => setTool(LinkType.EXCEPTION)} icon={<div className="w-5 h-5 border-2 border-slate-600 rounded-full flex items-center justify-center text-[10px] font-bold">x</div>} label="Exception" />
           <ToolButton active={tool === 'procedural'} onClick={() => setTool('procedural')} icon={<ArrowRight className="w-5 h-5" />} label="Procedural" />
           <ToolButton active={tool === LinkType.EFFECT} onClick={() => setTool(LinkType.EFFECT)} icon={<div className="flex items-center"><ArrowRight className="w-3 h-3 -mr-1" /><ArrowRight className="w-3 h-3 rotate-180" /></div>} label="Effect" />
           <div className="w-10 h-px bg-slate-100 mx-auto" />
@@ -699,6 +751,40 @@ export default function App() {
                       </button>
                     </div>
                   )}
+
+                  <div className="col-span-2 grid grid-cols-2 gap-4 pt-2">
+                    <label className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer hover:bg-white transition-all">
+                      <input 
+                        type="checkbox" 
+                        checked={model.elements.find(e => e.id === selectedId)?.isPhysical || false}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setModel(prev => ({
+                            ...prev,
+                            elements: prev.elements.map(el => el.id === selectedId ? { ...el, isPhysical: checked } : el)
+                          }));
+                        }}
+                        className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
+                      />
+                      <span className="text-xs font-bold text-slate-700">Physical</span>
+                    </label>
+                    <label className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer hover:bg-white transition-all">
+                      <input 
+                        type="checkbox" 
+                        checked={model.elements.find(e => e.id === selectedId)?.isEnvironmental || false}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setModel(prev => ({
+                            ...prev,
+                            elements: prev.elements.map(el => el.id === selectedId ? { ...el, isEnvironmental: checked } : el)
+                          }));
+                        }}
+                        className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
+                      />
+                      <span className="text-xs font-bold text-slate-700">Environmental</span>
+                    </label>
+                  </div>
+
                   {model.elements.find(e => e.id === selectedId)?.type === ElementType.STATE && (
                     <div className="col-span-2 grid grid-cols-2 gap-4 pt-2">
                       <label className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer hover:bg-white transition-all">
@@ -756,6 +842,9 @@ export default function App() {
                       <option value={LinkType.CONSUMPTION}>Consumption</option>
                       <option value={LinkType.RESULT}>Result</option>
                       <option value={LinkType.EFFECT}>Effect</option>
+                      <option value={LinkType.CONDITION}>Condition</option>
+                      <option value={LinkType.EVENT}>Event</option>
+                      <option value={LinkType.EXCEPTION}>Exception</option>
                     </optgroup>
                   </select>
                 </div>
@@ -832,6 +921,7 @@ export default function App() {
           </div>
         </aside>
       </div>
+      <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
     </div>
   );
 }

@@ -34,6 +34,18 @@ npm run dev
 ```
 The application will be available at `http://localhost:3000`.
 
+## Deployment to GitHub Pages
+
+This project is configured to be deployed easily to GitHub Pages.
+
+1.  **Push your code to a GitHub repository.**
+2.  **Enable GitHub Actions for Pages:**
+    -   Go to your repository **Settings** > **Pages**.
+    -   Under **Build and deployment** > **Source**, select **GitHub Actions**.
+3.  **The included workflow** (`.github/workflows/deploy.yml`) will automatically build and deploy your app whenever you push to the `main` branch.
+
+The `vite.config.ts` is configured with `base: './'` to ensure that assets are loaded correctly even if your app is hosted in a repository subdirectory (e.g., `https://username.github.io/repo-name/`).
+
 ## Project Structure
 
 - `src/App.tsx`: Main application logic and UI.
