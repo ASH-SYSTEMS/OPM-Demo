@@ -684,17 +684,42 @@ export default function App() {
     reader.onload = (event) => {
       try {
         const imported = JSON.parse(event.target?.result as string);
-        if (imported.logical && imported.opds && imported.currentOpdId) {
-          updateModel(imported);
-        } else if (imported.logical && imported.visual) {
+        
+        // 1. Check if it's the schema written by exportModel (logicalModel & diagrams)
+        if (imported.logicalModel && imported.diagrams) {
+          const logical = imported.logicalModel;
+          const opds = imported.diagrams.map((diag: any) => ({
+            id: diag.id,
+            name: diag.name,
+            parentProcessId: diag.parentProcessId,
+            visual: diag.visualRepresentation || diag.visual || { elements: [], links: [] }
+          }));
+          const currentOpdId = imported.currentOpdId || opds[0]?.id || '';
+          updateModel({
+            logical,
+            opds,
+            currentOpdId
+          });
+        }
+        // 2. Check if it's direct OPMModel format
+        else if (imported.logical && imported.opds) {
+          updateModel({
+            logical: imported.logical,
+            opds: imported.opds,
+            currentOpdId: imported.currentOpdId || imported.opds[0]?.id || ''
+          });
+        }
+        // 3. Single-diagram representation with logical and visual
+        else if (imported.logical && imported.visual) {
           const sdId = uuidv4();
           updateModel({
             logical: imported.logical,
             opds: [{ id: sdId, name: 'SD', visual: imported.visual }],
             currentOpdId: sdId
           });
-        } else {
-          // Legacy format migration
+        }
+        // 4. Legacy format (elements & links inline with visual variables)
+        else if (imported.elements && imported.links) {
           const logical = {
             elements: imported.elements.map((el: any) => {
               const { x, y, width, height, isExpanded, ...rest } = el;
@@ -708,10 +733,10 @@ export default function App() {
           const visual = {
             elements: imported.elements.map((el: any) => ({
               id: el.id,
-              x: el.x,
-              y: el.y,
-              width: el.width,
-              height: el.height,
+              x: el.x || 50,
+              y: el.y || 50,
+              width: el.width || 120,
+              height: el.height || 60,
               parentId: el.parentId,
               isExpanded: el.isExpanded
             })),
@@ -727,9 +752,26 @@ export default function App() {
             opds: [{ id: sdId, name: 'SD', visual }],
             currentOpdId: sdId
           });
+        } else {
+          setDialog({
+            isOpen: true,
+            title: "Import Failed",
+            message: "The selected file is not a valid OPM model schema.",
+            confirmLabel: "OK",
+            onConfirm: () => setDialog(prev => ({ ...prev, isOpen: false }))
+          });
         }
       } catch (err) {
-        alert("Invalid OPM model file");
+        setDialog({
+          isOpen: true,
+          title: "Import Error",
+          message: "Failed to parse the uploaded JSON file.",
+          confirmLabel: "OK",
+          onConfirm: () => setDialog(prev => ({ ...prev, isOpen: false }))
+        });
+      } finally {
+        // Clear input value to allow re-uploading the same file if needed
+        e.target.value = '';
       }
     };
     reader.readAsText(file);
