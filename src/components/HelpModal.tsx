@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Book, Layers, GitBranch, Info } from 'lucide-react';
+import { X, Book, Layers, GitBranch, Info, Zap } from 'lucide-react';
 
 interface HelpModalProps {
   isOpen: boolean;
@@ -83,6 +83,12 @@ export default function HelpModal({ isOpen, onClose }: HelpModalProps) {
               <div className="p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100">
                 <h4 className="font-bold text-indigo-900 text-sm mb-2">Procedural Links</h4>
                 <p className="text-sm text-indigo-700">Connect objects to processes to describe behavior (Agent, Instrument, Consumption, Result, Effect).</p>
+                <div className="mt-2 pt-2 border-t border-indigo-100">
+                  <p className="text-xs text-indigo-800 font-bold flex items-center gap-1">
+                    <Zap className="w-3 h-3" /> Invocation Link
+                  </p>
+                  <p className="text-xs text-indigo-600">Connects a source Process to a target Process. The source triggers the target.</p>
+                </div>
               </div>
               <div className="p-4 bg-amber-50/50 rounded-2xl border border-amber-100">
                 <h4 className="font-bold text-amber-900 text-sm mb-2">Control Links</h4>
@@ -92,6 +98,86 @@ export default function HelpModal({ isOpen, onClose }: HelpModalProps) {
                 <h4 className="font-bold text-emerald-900 text-sm mb-2">Structural Links</h4>
                 <p className="text-sm text-emerald-700">Connect elements of the same type to describe hierarchy and taxonomy (Aggregation, Exhibition, Generalization, Instantiation).</p>
               </div>
+            </div>
+          </section>
+
+          {/* Interactive Step-by-Step Guide */}
+          <section className="border-t border-slate-100 pt-8">
+            <h3 className="text-lg font-bold text-slate-900 mb-6 flex items-center gap-2">
+              <Book className="w-5 h-5 text-indigo-500" /> Step-By-Step Application Walkthrough
+            </h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <div className="flex gap-4">
+                  <div className="w-8 h-8 shrink-0 bg-indigo-100 text-indigo-600 font-bold rounded-lg flex items-center justify-center text-sm">1</div>
+                  <div>
+                    <h4 className="font-bold text-slate-800">Add Core Objects & Processes</h4>
+                    <p className="text-xs text-slate-600 mt-0.5">
+                      Select <strong>Object</strong> (rectangle) or <strong>Process</strong> (ellipse) from the left toolbar, then click anywhere on the canvas to place it and give it a name.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-4">
+                  <div className="w-8 h-8 shrink-0 bg-indigo-100 text-indigo-600 font-bold rounded-lg flex items-center justify-center text-sm">2</div>
+                  <div>
+                    <h4 className="font-bold text-slate-800">Refine Properties & Configure States</h4>
+                    <p className="text-xs text-slate-600 mt-0.5">
+                      Click any element and locate the <strong>Right Sidebar</strong>. For Objects, click <strong>+ State</strong> to create states, and mark them as Initial, Final, or Default.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-4">
+                  <div className="w-8 h-8 shrink-0 bg-indigo-100 text-indigo-600 font-bold rounded-lg flex items-center justify-center text-sm">3</div>
+                  <div>
+                    <h4 className="font-bold text-slate-800">Draw Behavior or Structural Links</h4>
+                    <p className="text-xs text-slate-600 mt-0.5">
+                      Select a link tool from the left toolbar. Click the <strong>source element</strong> first, then click the <strong>target element</strong> to generate the connection.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex gap-4">
+                  <div className="w-8 h-8 shrink-0 bg-indigo-100 text-indigo-600 font-bold rounded-lg flex items-center justify-center text-sm">4</div>
+                  <div>
+                    <h4 className="font-bold text-indigo-800">In-Zoom Processes & Nesting</h4>
+                    <p className="text-xs text-slate-600 mt-0.5">
+                      To detail how a process works, double-click a process or click <strong>Zoom In</strong> in its sidebar. Inside the new view, you can place subprocesses in sequential vertical order.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-4">
+                  <div className="w-8 h-8 shrink-0 bg-indigo-100 text-indigo-600 font-bold rounded-lg flex items-center justify-center text-sm">5</div>
+                  <div>
+                    <h4 className="font-bold text-indigo-800">Import Existing Entities</h4>
+                    <p className="text-xs text-slate-600 mt-0.5">
+                      Click <strong>Add Existing</strong> in the toolbar. Select multiple elements and relations to reuse them across multiple OPDs.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-4">
+                  <div className="w-8 h-8 shrink-0 bg-indigo-100 text-indigo-600 font-bold rounded-lg flex items-center justify-center text-sm">6</div>
+                  <div>
+                    <h4 className="font-bold text-indigo-800">Use Smart Layout & Undo/Redo</h4>
+                    <p className="text-xs text-slate-600 mt-0.5">
+                      Click <strong>Auto Layout</strong> in the top header to automatically arrange your diagrams vertically. Use the <strong>Undo</strong> and <strong>Redo</strong> actions to freely modify your layout.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 p-4 bg-slate-50/70 rounded-2xl border border-slate-100 flex items-start gap-3">
+              <span className="text-lg">💡</span>
+              <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                <strong>Pro-Tip:</strong> The live-generated <strong>Object-Process Language (OPL)</strong> sentences on the right panel instantly update with every diagram change. If you connect an object of a state with a process using an <i>agent</i> link, the text will syntactically align itself, ensuring immediate visual/verbal correctness!
+              </p>
             </div>
           </section>
 
@@ -106,6 +192,22 @@ export default function HelpModal({ isOpen, onClose }: HelpModalProps) {
             </div>
             <p className="mt-4 text-sm text-slate-500 italic text-center">
               The diagram above illustrates the abstract syntax of OPM-Pro, following the MOF (Meta-Object Facility) standard.
+            </p>
+          </section>
+
+          {/* Copyright Section */}
+          <section className="border-t border-slate-100 pt-8">
+            <h3 className="text-lg font-bold text-slate-900 mb-2 flex items-center gap-2">
+              ⚖️ License & Attribution
+            </h3>
+            <p className="text-sm text-slate-600 leading-relaxed">
+              <strong>OPM-Pro</strong> is Copyright © 2026 <strong>Avi Shaked</strong>.
+            </p>
+            <p className="text-xs text-slate-500 leading-relaxed mt-2">
+              Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files, to deal in the Software without restriction, subject to the following condition:
+            </p>
+            <p className="text-xs text-indigo-700 font-semibold leading-relaxed mt-1">
+              "The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software, with attribution credited to Avi Shaked."
             </p>
           </section>
         </div>
