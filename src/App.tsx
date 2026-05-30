@@ -51,6 +51,8 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import HelpModal from './components/HelpModal';
 import OPMIcon from './components/OPMIcon';
+import TutorialOverlay from './components/TutorialOverlay';
+import { TUTORIAL_STEPS } from './constants/tutorial';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -118,6 +120,68 @@ export default function App() {
   const [isAddExistingOpen, setIsAddExistingOpen] = useState(false);
   const [addExistingTab, setAddExistingTab] = useState<'elements' | 'links'>('elements');
   const [selectedAddExistingIds, setSelectedAddExistingIds] = useState<string[]>([]);
+
+  // Tutorial State Definitions
+  const [isTutorialActive, setIsTutorialActive] = useState(false);
+  const [currentTutorialStep, setCurrentTutorialStep] = useState(0);
+  const [tutorialBackup, setTutorialBackup] = useState<OPMModel | null>(null);
+
+  // Start the step-by-step tutorial walkthrough
+  const startTutorialIndex = () => {
+    setTutorialBackup(model);
+    setIsTutorialActive(true);
+    setCurrentTutorialStep(0);
+    setModel(TUTORIAL_STEPS[0].modelState);
+    setSelectedId(null);
+    setSelectedLinkId(null);
+    setTool('select');
+  };
+
+  const handleNextTutorialStep = () => {
+    if (currentTutorialStep < TUTORIAL_STEPS.length - 1) {
+      const nextStep = currentTutorialStep + 1;
+      setCurrentTutorialStep(nextStep);
+      const step = TUTORIAL_STEPS[nextStep];
+      setModel(step.modelState);
+      setSelectedId(step.selectedId);
+      setSelectedLinkId(step.selectedLinkId);
+      setTool(step.activeTool);
+    }
+  };
+
+  const handlePrevTutorialStep = () => {
+    if (currentTutorialStep > 0) {
+      const prevStep = currentTutorialStep - 1;
+      setCurrentTutorialStep(prevStep);
+      const step = TUTORIAL_STEPS[prevStep];
+      setModel(step.modelState);
+      setSelectedId(step.selectedId);
+      setSelectedLinkId(step.selectedLinkId);
+      setTool(step.activeTool);
+    }
+  };
+
+  const handleSkipTutorial = () => {
+    if (tutorialBackup) {
+      setModel(tutorialBackup);
+    }
+    setIsTutorialActive(false);
+    setCurrentTutorialStep(0);
+    setSelectedId(null);
+    setSelectedLinkId(null);
+    setTool('select');
+  };
+
+  const handleFinishTutorial = (keepModel: boolean) => {
+    if (!keepModel && tutorialBackup) {
+      setModel(tutorialBackup);
+    }
+    setIsTutorialActive(false);
+    setCurrentTutorialStep(0);
+    setSelectedId(null);
+    setSelectedLinkId(null);
+    setTool('select');
+  };
   const [dialog, setDialog] = useState<{
     isOpen: boolean;
     title: string;
@@ -1753,22 +1817,22 @@ export default function App() {
         <aside className="w-20 bg-white border-r border-slate-200 flex flex-col items-center py-6 gap-4 shrink-0 shadow-sm overflow-y-auto">
           <ToolButton active={tool === 'select'} onClick={() => setTool('select')} icon={<MousePointer2 className="w-5 h-5" />} label="Select" />
           <div className="w-10 h-px bg-slate-100 mx-auto" />
-          <ToolButton active={tool === ElementType.OBJECT} onClick={() => setTool(ElementType.OBJECT)} icon={<Square className="w-5 h-5" />} label="Object" />
-          <ToolButton active={tool === ElementType.PROCESS} onClick={() => setTool(ElementType.PROCESS)} icon={<svg className="w-6 h-4" viewBox="0 0 24 16" fill="none" xmlns="http://www.w3.org/2000/svg"><ellipse cx="12" cy="8" rx="10" ry="6" stroke="currentColor" strokeWidth="2" /></svg>} label="Process" />
+          <ToolButton id="tool-btn-OBJECT" active={tool === ElementType.OBJECT} onClick={() => setTool(ElementType.OBJECT)} icon={<Square className="w-5 h-5" />} label="Object" />
+          <ToolButton id="tool-btn-PROCESS" active={tool === ElementType.PROCESS} onClick={() => setTool(ElementType.PROCESS)} icon={<svg className="w-6 h-4" viewBox="0 0 24 16" fill="none" xmlns="http://www.w3.org/2000/svg"><ellipse cx="12" cy="8" rx="10" ry="6" stroke="currentColor" strokeWidth="2" /></svg>} label="Process" />
           <div className="w-10 h-px bg-slate-100 mx-auto" />
           <ToolButton active={tool === LinkType.AGENT} onClick={() => setTool(LinkType.AGENT)} icon={<div className="w-5 h-5 border-2 border-slate-600 rounded-full flex items-center justify-center"><div className="w-1.5 h-1.5 bg-slate-600 rounded-full" /></div>} label="Agent" />
-          <ToolButton active={tool === LinkType.INSTRUMENT} onClick={() => setTool(LinkType.INSTRUMENT)} icon={<div className="w-5 h-5 border-2 border-slate-600 rounded-full" />} label="Instrument" />
+          <ToolButton id="tool-btn-INSTRUMENT" active={tool === LinkType.INSTRUMENT} onClick={() => setTool(LinkType.INSTRUMENT)} icon={<div className="w-5 h-5 border-2 border-slate-600 rounded-full" />} label="Instrument" />
           <ToolButton active={tool === LinkType.CONDITION} onClick={() => setTool(LinkType.CONDITION)} icon={<div className="w-5 h-5 border-2 border-slate-600 rounded-full flex items-center justify-center text-[10px] font-bold">c</div>} label="Condition" />
           <ToolButton active={tool === LinkType.EVENT} onClick={() => setTool(LinkType.EVENT)} icon={<div className="w-5 h-5 border-2 border-slate-600 rounded-full flex items-center justify-center text-[10px] font-bold">e</div>} label="Event" />
           <ToolButton active={tool === LinkType.EXCEPTION} onClick={() => setTool(LinkType.EXCEPTION)} icon={<div className="w-5 h-5 border-2 border-slate-600 rounded-full flex items-center justify-center text-[10px] font-bold">x</div>} label="Exception" />
-          <ToolButton active={tool === LinkType.INVOCATION} onClick={() => setTool(LinkType.INVOCATION)} icon={<Zap className="w-5 h-5" />} label="Invoke" />
+          <ToolButton id="tool-btn-INVOCATION" active={tool === LinkType.INVOCATION} onClick={() => setTool(LinkType.INVOCATION)} icon={<Zap className="w-5 h-5" />} label="Invoke" />
           <ToolButton active={tool === 'procedural'} onClick={() => setTool('procedural')} icon={<ArrowRight className="w-5 h-5" />} label="Procedural" />
           <ToolButton active={tool === LinkType.EFFECT} onClick={() => setTool(LinkType.EFFECT)} icon={<div className="flex items-center"><ArrowRight className="w-3 h-3 -mr-1" /><ArrowRight className="w-3 h-3 rotate-180" /></div>} label="Effect" />
           <div className="w-10 h-px bg-slate-100 mx-auto" />
-          <ToolButton active={tool === LinkType.AGGREGATION} onClick={() => setTool(LinkType.AGGREGATION)} icon={<svg viewBox="0 0 24 24" className="w-5 h-5 animate-none" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2 L2 20 H22 Z" fill="currentColor" /><text x="12" y="16.5" fill="white" fontSize="11" fontWeight="900" fontFamily="sans-serif" textAnchor="middle">A</text></svg>} label="Aggregation" />
-          <ToolButton active={tool === LinkType.EXHIBITION} onClick={() => setTool(LinkType.EXHIBITION)} icon={<svg viewBox="0 0 24 24" className="w-5 h-5 animate-none" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2 L2 20 H22 Z" fill="currentColor" /><path d="M12 7 L5.5 18 H18.5 Z" fill="white" /><text x="12" y="15.5" fill="currentColor" fontSize="9" fontWeight="900" fontFamily="sans-serif" textAnchor="middle">E</text></svg>} label="Exhibition" />
-          <ToolButton active={tool === LinkType.GENERALIZATION} onClick={() => setTool(LinkType.GENERALIZATION)} icon={<svg viewBox="0 0 24 24" className="w-5 h-5 animate-none" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3 L3 20 H21 Z" stroke="currentColor" strokeWidth="2.5" fill="white" /><text x="12" y="16" fill="currentColor" fontSize="12" fontWeight="900" fontFamily="sans-serif" textAnchor="middle">G</text></svg>} label="Generalization" />
-          <ToolButton active={tool === LinkType.INSTANTIATION} onClick={() => setTool(LinkType.INSTANTIATION)} icon={<svg viewBox="0 0 24 24" className="w-5 h-5 animate-none" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2 L2 20 H22 Z" fill="currentColor" /><circle cx="12" cy="14" r="5" fill="white" /><text x="12" y="17.2" fill="currentColor" fontSize="10" fontWeight="900" fontFamily="sans-serif" textAnchor="middle">I</text></svg>} label="Instantiation" />
+          <ToolButton id="tool-btn-AGGREGATION" active={tool === LinkType.AGGREGATION} onClick={() => setTool(LinkType.AGGREGATION)} icon={<svg viewBox="0 0 24 24" className="w-5 h-5 animate-none" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2 L2 20 H22 Z" fill="currentColor" /><text x="12" y="16.5" fill="white" fontSize="11" fontWeight="900" fontFamily="sans-serif" textAnchor="middle">A</text></svg>} label="Aggregation" />
+          <ToolButton id="tool-btn-EXHIBITION" active={tool === LinkType.EXHIBITION} onClick={() => setTool(LinkType.EXHIBITION)} icon={<svg viewBox="0 0 24 24" className="w-5 h-5 animate-none" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2 L2 20 H22 Z" fill="currentColor" /><path d="M12 7 L5.5 18 H18.5 Z" fill="white" /><text x="12" y="15.5" fill="currentColor" fontSize="9" fontWeight="900" fontFamily="sans-serif" textAnchor="middle">E</text></svg>} label="Exhibition" />
+          <ToolButton id="tool-btn-GENERALIZATION" active={tool === LinkType.GENERALIZATION} onClick={() => setTool(LinkType.GENERALIZATION)} icon={<svg viewBox="0 0 24 24" className="w-5 h-5 animate-none" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3 L3 20 H21 Z" stroke="currentColor" strokeWidth="2.5" fill="white" /><text x="12" y="16" fill="currentColor" fontSize="12" fontWeight="900" fontFamily="sans-serif" textAnchor="middle">G</text></svg>} label="Generalization" />
+          <ToolButton id="tool-btn-INSTANTIATION" active={tool === LinkType.INSTANTIATION} onClick={() => setTool(LinkType.INSTANTIATION)} icon={<svg viewBox="0 0 24 24" className="w-5 h-5 animate-none" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2 L2 20 H22 Z" fill="currentColor" /><circle cx="12" cy="14" r="5" fill="white" /><text x="12" y="17.2" fill="currentColor" fontSize="10" fontWeight="900" fontFamily="sans-serif" textAnchor="middle">I</text></svg>} label="Instantiation" />
           <div className="w-10 h-px bg-slate-100 mx-auto" />
           <ToolButton active={isAddExistingOpen} onClick={() => setIsAddExistingOpen(true)} icon={<Plus className="w-5 h-5" />} label="Add Existing" />
           <div className="mt-auto pt-4 border-t border-slate-100 w-full flex flex-col items-center gap-4">
@@ -1847,7 +1911,7 @@ export default function App() {
           )}
         </main>
 
-        <aside className="w-[400px] bg-white border-l border-slate-200 flex flex-col shrink-0 shadow-sm">
+        <aside id="properties-sidebar" className="w-[400px] bg-white border-l border-slate-200 flex flex-col shrink-0 shadow-sm">
           <div className="p-6 border-b border-slate-100">
             <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2">
               <Settings className="w-3.5 h-3.5" /> Properties
@@ -2176,7 +2240,7 @@ export default function App() {
             )}
           </div>
 
-          <div className="flex-1 flex flex-col overflow-hidden">
+          <div id="opl-panel" className="flex-1 flex flex-col overflow-hidden border-t border-slate-100">
             <div className="p-6 pb-2 flex items-center justify-between">
               <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
                 <FileText className="w-3.5 h-3.5" /> OPL
@@ -2260,7 +2324,7 @@ export default function App() {
         </div>
       )}
 
-      <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
+      <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} onStartTutorial={startTutorialIndex} />
 
       {/* Add Existing Element Modal */}
       {isAddExistingOpen && (
@@ -2457,13 +2521,30 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {isTutorialActive && (
+        <TutorialOverlay
+          currentStep={currentTutorialStep}
+          totalSteps={TUTORIAL_STEPS.length}
+          isOpen={isTutorialActive}
+          onNext={handleNextTutorialStep}
+          onPrev={handlePrevTutorialStep}
+          onSkip={handleSkipTutorial}
+          onFinish={handleFinishTutorial}
+          targetId={TUTORIAL_STEPS[currentTutorialStep].targetId}
+          stepTitle={TUTORIAL_STEPS[currentTutorialStep].title}
+          stepDescription={TUTORIAL_STEPS[currentTutorialStep].description}
+          stepLongDescription={TUTORIAL_STEPS[currentTutorialStep].longDescription}
+        />
+      )}
     </div>
   );
 }
 
-function ToolButton({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) {
+function ToolButton({ id, active, onClick, icon, label }: { id?: string, active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) {
   return (
     <button 
+      id={id}
       onClick={onClick}
       className={cn(
         "p-3.5 rounded-2xl transition-all group relative",

@@ -4,9 +4,10 @@ import { X, Book, Layers, GitBranch, Info, Zap } from 'lucide-react';
 interface HelpModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onStartTutorial?: () => void;
 }
 
-export default function HelpModal({ isOpen, onClose }: HelpModalProps) {
+export default function HelpModal({ isOpen, onClose, onStartTutorial }: HelpModalProps) {
   if (!isOpen) return null;
 
   return (
@@ -33,6 +34,33 @@ export default function HelpModal({ isOpen, onClose }: HelpModalProps) {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-8 space-y-12">
+          {/* Interactive Step-by-Step Tutorial Option */}
+          {onStartTutorial && (
+            <div className="p-6 bg-gradient-to-r from-indigo-50 to-indigo-100/40 rounded-3xl border border-indigo-150/50 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
+              <div className="space-y-1 text-center sm:text-left">
+                <h4 className="font-extrabold text-indigo-950 flex items-center justify-center sm:justify-start gap-2 text-sm">
+                  <span className="flex h-2.5 w-2.5 relative">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-indigo-600"></span>
+                  </span>
+                  🚀 New: Step-By-Step Interactive Tutorial
+                </h4>
+                <p className="text-xs text-indigo-700/80 max-w-xl font-medium leading-relaxed">
+                  Learn OPM by building an <strong>Automated Espresso Maker</strong> right on your canvas with real-time annotations on exactly what to input and click!
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  onClose();
+                  onStartTutorial();
+                }}
+                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black shadow-md shadow-indigo-100 transition-all hover:scale-105 select-none active:scale-95 shrink-0"
+              >
+                Launch Tutorial Walkthrough
+              </button>
+            </div>
+          )}
+
           {/* Introduction */}
           <section>
             <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
