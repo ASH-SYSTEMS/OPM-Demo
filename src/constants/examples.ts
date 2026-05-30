@@ -334,5 +334,55 @@ export const OPM_EXAMPLES: OPMExample[] = [
       ],
       currentOpdId: 'opm-reflective-sd'
     }
+  },
+  {
+    id: 'structural-links-showcase',
+    name: 'Car Structural Model',
+    description: 'A dedicated OPM model showcasing the four key structural link types: Aggregation, Exhibition, Generalization, and Instantiation.',
+    model: {
+      logical: {
+        elements: [
+          { id: 'car', type: ElementType.OBJECT, name: 'Car', essence: Essence.PHYSICAL, affiliation: Affiliation.SYSTEMIC },
+          { id: 'engine', type: ElementType.OBJECT, name: 'Engine', essence: Essence.PHYSICAL, affiliation: Affiliation.SYSTEMIC },
+          { id: 'wheel', type: ElementType.OBJECT, name: 'Wheel', essence: Essence.PHYSICAL, affiliation: Affiliation.SYSTEMIC },
+          { id: 'speed', type: ElementType.OBJECT, name: 'Speed', essence: Essence.INFORMATIONAL, affiliation: Affiliation.SYSTEMIC },
+          { id: 'electric-car', type: ElementType.OBJECT, name: 'Electric Car', essence: Essence.PHYSICAL, affiliation: Affiliation.SYSTEMIC },
+          { id: 'combustion-car', type: ElementType.OBJECT, name: 'Combustion Car', essence: Essence.PHYSICAL, affiliation: Affiliation.SYSTEMIC },
+          { id: 'my-tesla', type: ElementType.OBJECT, name: 'My Electric Car', essence: Essence.PHYSICAL, affiliation: Affiliation.SYSTEMIC }
+        ],
+        links: [
+          { id: 'l_agg_engine', type: LinkType.AGGREGATION, sourceId: 'car', targetId: 'engine' },
+          { id: 'l_agg_wheel', type: LinkType.AGGREGATION, sourceId: 'car', targetId: 'wheel' },
+          { id: 'l_exh_speed', type: LinkType.EXHIBITION, sourceId: 'car', targetId: 'speed' },
+          { id: 'l_gen_electric', type: LinkType.GENERALIZATION, sourceId: 'car', targetId: 'electric-car' },
+          { id: 'l_gen_combustion', type: LinkType.GENERALIZATION, sourceId: 'car', targetId: 'combustion-car' },
+          { id: 'l_inst_tesla', type: LinkType.INSTANTIATION, sourceId: 'electric-car', targetId: 'my-tesla' }
+        ]
+      },
+      opds: [{
+        id: 'car-sd',
+        name: 'SD',
+        visual: {
+          elements: [
+            { id: 'car', x: 340, y: 150, width: 120, height: 60 },
+            { id: 'engine', x: 580, y: 70, width: 110, height: 50 },
+            { id: 'wheel', x: 580, y: 180, width: 110, height: 50 },
+            { id: 'speed', x: 100, y: 155, width: 110, height: 50 },
+            { id: 'electric-car', x: 190, y: 320, width: 120, height: 60 },
+            { id: 'combustion-car', x: 490, y: 320, width: 135, height: 60 },
+            { id: 'my-tesla', x: 190, y: 460, width: 120, height: 60 }
+          ],
+          links: [
+            { id: 'l_agg_engine' },
+            { id: 'l_agg_wheel' },
+            { id: 'l_exh_speed' },
+            { id: 'l_gen_electric' },
+            { id: 'l_gen_combustion' },
+            { id: 'l_inst_tesla' }
+          ]
+        }
+      }],
+      currentOpdId: 'car-sd'
+    }
   }
 ];

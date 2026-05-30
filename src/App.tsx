@@ -636,7 +636,7 @@ export default function App() {
           ? ((targetEl && targetEl.type === ElementType.PROCESS) ? targetEl.id : currentOpd.parentProcessId)
           : undefined;
         
-        const parentVisual = parentId ? currentOpd.visual.elements.find(ve => ve.id === parentId) : null;
+        const parentVisual = parentId ? getAbsolutePosition(parentId) : null;
         
         const relativeX = parentVisual ? pos.x - parentVisual.x : pos.x;
         const relativeY = parentVisual ? pos.y - parentVisual.y : pos.y;
@@ -1508,26 +1508,38 @@ export default function App() {
 
     // Structural Links (Triangles at source)
     if (link.type === LinkType.AGGREGATION || link.type === LinkType.EXHIBITION || link.type === LinkType.GENERALIZATION || link.type === LinkType.INSTANTIATION) {
-      const triangleSize = 20;
-      const apexX = fromX + triangleSize * Math.cos(angle);
-      const apexY = fromY + triangleSize * Math.sin(angle);
+      const triangleSize = 16;
+      const offset = 15; // Shift the arrowhead away from the end of the edge to differ from procedural links
+      const lineStartAfterTriangleX = fromX + (offset + triangleSize) * Math.cos(angle);
+      const lineStartAfterTriangleY = fromY + (offset + triangleSize) * Math.sin(angle);
       
       return (
         <Group key={link.id}>
-          <Line points={[apexX, apexY, toX, toY]} {...commonProps} />
+          {/* Segment from source element to apex */}
+          <Line points={[fromX, fromY, fromX + offset * Math.cos(angle), fromY + offset * Math.sin(angle)]} {...commonProps} />
+          {/* Main segment from base of triangle to target element */}
+          <Line points={[lineStartAfterTriangleX, lineStartAfterTriangleY, toX, toY]} {...commonProps} />
+          
           <Group x={fromX} y={fromY} rotation={(angle * 180) / Math.PI} onClick={commonProps.onClick}>
+            {/* The main triangle */}
             <Line
-              points={[0, 0, triangleSize, -triangleSize/2, triangleSize, triangleSize/2]}
+              points={[offset, 0, offset + triangleSize, -triangleSize/2, offset + triangleSize, triangleSize/2]}
               closed
               fill={link.type === LinkType.GENERALIZATION ? 'white' : linkColor}
               stroke={linkColor}
               strokeWidth={2}
             />
+            {/* The line at the base of the triangle (underline) */}
+            <Line
+              points={[offset + triangleSize, -triangleSize/2 - 5, offset + triangleSize, triangleSize/2 + 5]}
+              stroke={linkColor}
+              strokeWidth={2}
+            />
             {link.type === LinkType.EXHIBITION && (
-              <Line points={[triangleSize/4, 0, triangleSize*0.8, -triangleSize/4, triangleSize*0.8, triangleSize/4]} closed fill="white" stroke={linkColor} strokeWidth={1} />
+              <Line points={[offset + triangleSize/4, 0, offset + triangleSize*0.8, -triangleSize/4, offset + triangleSize*0.8, triangleSize/4]} closed fill="white" stroke={linkColor} strokeWidth={1} />
             )}
             {link.type === LinkType.INSTANTIATION && (
-              <KonvaCircle x={triangleSize*0.6} radius={3} fill="white" />
+              <KonvaCircle x={offset + triangleSize*0.6} radius={2.5} fill="white" />
             )}
           </Group>
           {renderCardinality()}
@@ -1595,7 +1607,10 @@ export default function App() {
           }
         }} 
         onClick={(e) => {
-          e.cancelBubble = true;
+          // Do not cancel click bubble when adding new elements so handleStageClick can be triggered on stage
+          if (tool !== ElementType.OBJECT && tool !== ElementType.PROCESS) {
+            e.cancelBubble = true;
+          }
           handleElementClick(el.id);
         }}
         onTransformEnd={handleTransformEnd}
@@ -1739,7 +1754,7 @@ export default function App() {
           <ToolButton active={tool === 'select'} onClick={() => setTool('select')} icon={<MousePointer2 className="w-5 h-5" />} label="Select" />
           <div className="w-10 h-px bg-slate-100 mx-auto" />
           <ToolButton active={tool === ElementType.OBJECT} onClick={() => setTool(ElementType.OBJECT)} icon={<Square className="w-5 h-5" />} label="Object" />
-          <ToolButton active={tool === ElementType.PROCESS} onClick={() => setTool(ElementType.PROCESS)} icon={<div className="w-6 h-4 border-2 border-slate-600 rounded-full" />} label="Process" />
+          <ToolButton active={tool === ElementType.PROCESS} onClick={() => setTool(ElementType.PROCESS)} icon={<svg className="w-6 h-4" viewBox="0 0 24 16" fill="none" xmlns="http://www.w3.org/2000/svg"><ellipse cx="12" cy="8" rx="10" ry="6" stroke="currentColor" strokeWidth="2" /></svg>} label="Process" />
           <div className="w-10 h-px bg-slate-100 mx-auto" />
           <ToolButton active={tool === LinkType.AGENT} onClick={() => setTool(LinkType.AGENT)} icon={<div className="w-5 h-5 border-2 border-slate-600 rounded-full flex items-center justify-center"><div className="w-1.5 h-1.5 bg-slate-600 rounded-full" /></div>} label="Agent" />
           <ToolButton active={tool === LinkType.INSTRUMENT} onClick={() => setTool(LinkType.INSTRUMENT)} icon={<div className="w-5 h-5 border-2 border-slate-600 rounded-full" />} label="Instrument" />
@@ -1750,10 +1765,10 @@ export default function App() {
           <ToolButton active={tool === 'procedural'} onClick={() => setTool('procedural')} icon={<ArrowRight className="w-5 h-5" />} label="Procedural" />
           <ToolButton active={tool === LinkType.EFFECT} onClick={() => setTool(LinkType.EFFECT)} icon={<div className="flex items-center"><ArrowRight className="w-3 h-3 -mr-1" /><ArrowRight className="w-3 h-3 rotate-180" /></div>} label="Effect" />
           <div className="w-10 h-px bg-slate-100 mx-auto" />
-          <ToolButton active={tool === LinkType.AGGREGATION} onClick={() => setTool(LinkType.AGGREGATION)} icon={<div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[12px] border-b-slate-600" />} label="Aggregation" />
-          <ToolButton active={tool === LinkType.EXHIBITION} onClick={() => setTool(LinkType.EXHIBITION)} icon={<div className="relative w-4 h-4"><div className="absolute inset-0 w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[12px] border-b-slate-600" /><div className="absolute inset-[3px] w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-b-[8px] border-b-white" /></div>} label="Exhibition" />
-          <ToolButton active={tool === LinkType.GENERALIZATION} onClick={() => setTool(LinkType.GENERALIZATION)} icon={<div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[12px] border-b-slate-400" />} label="Generalization" />
-          <ToolButton active={tool === LinkType.INSTANTIATION} onClick={() => setTool(LinkType.INSTANTIATION)} icon={<div className="relative w-4 h-4"><div className="absolute inset-0 w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[12px] border-b-slate-600" /><div className="absolute top-[6px] left-[3px] w-2 h-2 bg-white rounded-full" /></div>} label="Instantiation" />
+          <ToolButton active={tool === LinkType.AGGREGATION} onClick={() => setTool(LinkType.AGGREGATION)} icon={<svg viewBox="0 0 24 24" className="w-5 h-5 animate-none" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2 L2 20 H22 Z" fill="currentColor" /><text x="12" y="16.5" fill="white" fontSize="11" fontWeight="900" fontFamily="sans-serif" textAnchor="middle">A</text></svg>} label="Aggregation" />
+          <ToolButton active={tool === LinkType.EXHIBITION} onClick={() => setTool(LinkType.EXHIBITION)} icon={<svg viewBox="0 0 24 24" className="w-5 h-5 animate-none" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2 L2 20 H22 Z" fill="currentColor" /><path d="M12 7 L5.5 18 H18.5 Z" fill="white" /><text x="12" y="15.5" fill="currentColor" fontSize="9" fontWeight="900" fontFamily="sans-serif" textAnchor="middle">E</text></svg>} label="Exhibition" />
+          <ToolButton active={tool === LinkType.GENERALIZATION} onClick={() => setTool(LinkType.GENERALIZATION)} icon={<svg viewBox="0 0 24 24" className="w-5 h-5 animate-none" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3 L3 20 H21 Z" stroke="currentColor" strokeWidth="2.5" fill="white" /><text x="12" y="16" fill="currentColor" fontSize="12" fontWeight="900" fontFamily="sans-serif" textAnchor="middle">G</text></svg>} label="Generalization" />
+          <ToolButton active={tool === LinkType.INSTANTIATION} onClick={() => setTool(LinkType.INSTANTIATION)} icon={<svg viewBox="0 0 24 24" className="w-5 h-5 animate-none" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2 L2 20 H22 Z" fill="currentColor" /><circle cx="12" cy="14" r="5" fill="white" /><text x="12" y="17.2" fill="currentColor" fontSize="10" fontWeight="900" fontFamily="sans-serif" textAnchor="middle">I</text></svg>} label="Instantiation" />
           <div className="w-10 h-px bg-slate-100 mx-auto" />
           <ToolButton active={isAddExistingOpen} onClick={() => setIsAddExistingOpen(true)} icon={<Plus className="w-5 h-5" />} label="Add Existing" />
           <div className="mt-auto pt-4 border-t border-slate-100 w-full flex flex-col items-center gap-4">

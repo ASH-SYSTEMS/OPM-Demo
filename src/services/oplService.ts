@@ -149,10 +149,10 @@ export function generateOPL(logical: { elements: LogicalElement[], links: Logica
         sentences.push(`${sName} exhibits ${tName}.`);
         break;
       case LinkType.GENERALIZATION:
-        sentences.push(`${sName} is a ${tName}.`);
+        sentences.push(`${tName} is a ${sName}.`);
         break;
       case LinkType.INSTANTIATION:
-        sentences.push(`${sName} is an instance of ${tName}.`);
+        sentences.push(`${tName} is an instance of ${sName}.`);
         break;
       case LinkType.AGENT:
         {
