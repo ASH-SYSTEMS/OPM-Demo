@@ -1,54 +1,82 @@
-# OPM-Pro v1
+# OPM-Pro
 
-OPM-Pro is a professional Object-Process Methodology (OPM) modeling tool built with React and Konva. It allows users to create, edit, and export OPM models following the ISO 19450 standard.
+OPM-Pro is a web-based modeling platform for Object-Process Methodology (OPM) following the ISO 19450 standard, implemented with React, Vite, Tailwind CSS, and Konva.
 
-## Features
+This repository contains the source code for the application. Below are instructions detailing how to prepare your local development environment, install dependencies, run the server, and compile builds for production deployment.
 
-- **Standard OPM Elements**: Create Objects, Processes, and States.
-- **Hierarchical Modeling**: Support for in-zooming (nested subprocesses) and states within objects.
-- **Procedural & Structural Links**: Full support for Agent, Instrument, Consumption, Result, Effect, Aggregation, Exhibition, Generalization, and Instantiation links.
-- **Automatic OPL Generation**: Real-time generation of Object-Process Language (OPL) sentences.
-- **Cardinality Support**: Specify and display cardinality/multiplicity for all link types.
-- **Surface-Bound Anchors**: Links automatically snap to the boundaries of elements.
-- **Import/Export**: Save and load your models as JSON files.
+---
 
-## Prerequisites
+## Environment Preparation
 
-- **Node.js**: Version 18 or higher is recommended.
-- **npm**: Usually comes bundled with Node.js.
+To run this application, ensure your workstation meets the following runtime requirements:
 
-## Installation
+1. **Node.js**: Standard active LTS release or higher (v18.x, v20.x, or v22.x recommended).
+2. **npm**: Included package manager (v9.x or higher).
 
-1. Clone or download the project files.
-2. Open a terminal or command prompt in the project root directory.
-3. Install the required dependencies:
+---
+
+## Installation and Setup
+
+1. **Clone or Download the Codebase**  
+   Download or clone this project repository into a directory on your local machine.
+
+2. **Install Package Dependencies**  
+   From your terminal, navigate to the project directory root and execute the standard installer to download and configure all dependencies:
    ```bash
    npm install
    ```
 
-## Running the Application
+---
 
-To start the development server:
+## Development Workflow
+
+### Running the Live Development Server
+
+To boot the local development server with Hot Module Replacement (HMR) and real-time asset hosting:
 ```bash
 npm run dev
 ```
-The application will be available at `http://localhost:3000`.
 
-## Deployment to GitHub Pages
+Once running, the development console will indicate the local URL where you can view your active app. By default, this is:
+```
+http://localhost:3000
+```
 
-This project is configured to be deployed easily to GitHub Pages.
+### Static Analysis and Code Linting
 
-1.  **Push your code to a GitHub repository.**
-2.  **Enable GitHub Actions for Pages:**
-    -   Go to your repository **Settings** > **Pages**.
-    -   Under **Build and deployment** > **Source**, select **GitHub Actions**.
-3.  **The included workflow** (`.github/workflows/deploy.yml`) will automatically build and deploy your app whenever you push to the `main` branch.
+To validate codebase integrity, syntax structures, and TypeScript type constraints, run the integrated linter:
+```bash
+npm run lint
+```
 
-The `vite.config.ts` is configured with `base: './'` to ensure that assets are loaded correctly even if your app is hosted in a repository subdirectory (e.g., `https://username.github.io/repo-name/`).
+---
 
-## Project Structure
+## Production Compilation & Building
 
-- `src/App.tsx`: Main application logic and UI.
-- `src/types.ts`: TypeScript interfaces for OPM elements and links.
-- `src/services/oplService.ts`: Logic for generating OPL sentences.
-- `src/index.css`: Global styles and Tailwind CSS configuration.
+### Generate Static Production Bundle
+
+To build a minimized, performance-optimized static distribution suitable for deployment to web servers (e.g., Cloud Run, Nginx, Netlify, Vercel):
+```bash
+npm run build
+```
+
+This compiles TypeScript, optimizes images, minifies styling rules via Tailwind CSS, and outputs static HTML, CSS, and JS assets to the local directory:
+```
+/dist
+```
+
+### Previewing the Production Build
+
+To serve the generated optimized files locally as they would behave in a production environment:
+```bash
+npm run preview
+```
+
+---
+
+## License
+
+This project is open-source and licensed under the standard **BSD 3-Clause License** - see the [LICENSE](LICENSE) file for further legal definitions.
+
+### Credits
+Developed and contributed by **Avi Shaked**.
