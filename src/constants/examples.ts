@@ -27,6 +27,10 @@ export const OPM_EXAMPLES: OPMExample[] = [
           { id: 'l2', type: LinkType.CONSUMPTION, sourceId: '2-2', targetId: '3' },
           { id: 'l3', type: LinkType.RESULT, sourceId: '3', targetId: '2-1' },
           { id: 'l4', type: LinkType.RESULT, sourceId: '3', targetId: '4' },
+          { id: 'l_atm_cash', type: LinkType.TAGGED_STRUCTURAL, sourceId: '1', targetId: '4', tag: 'holds' },
+        ],
+        tags: [
+          { id: 'tag-holds', name: 'holds' }
         ]
       },
       opds: [{
@@ -46,6 +50,10 @@ export const OPM_EXAMPLES: OPMExample[] = [
             { id: 'l2' },
             { id: 'l3' },
             { id: 'l4' },
+            { id: 'l_atm_cash' }
+          ],
+          tagStyles: [
+            { tag: 'holds', color: '#059669', lineStyle: 'dashed', showTagLabel: true }
           ]
         }
       }],
@@ -338,7 +346,7 @@ export const OPM_EXAMPLES: OPMExample[] = [
   {
     id: 'structural-links-showcase',
     name: 'Car Structural Model',
-    description: 'A dedicated OPM model showcasing the four key structural link types: Aggregation, Exhibition, Generalization, and Instantiation.',
+    description: 'A dedicated OPM model showcasing the key structural link types: Aggregation, Exhibition, Generalization, Instantiation, and Tagged Structural Links (e.g. Engine powers Wheel).',
     model: {
       logical: {
         elements: [
@@ -350,13 +358,17 @@ export const OPM_EXAMPLES: OPMExample[] = [
           { id: 'combustion-car', type: ElementType.OBJECT, name: 'Combustion Car', essence: Essence.PHYSICAL, affiliation: Affiliation.SYSTEMIC },
           { id: 'my-tesla', type: ElementType.OBJECT, name: 'My Electric Car', essence: Essence.PHYSICAL, affiliation: Affiliation.SYSTEMIC }
         ],
+        tags: [
+          { id: 'tag-powers', name: 'powers' }
+        ],
         links: [
           { id: 'l_agg_engine', type: LinkType.AGGREGATION, sourceId: 'car', targetId: 'engine' },
           { id: 'l_agg_wheel', type: LinkType.AGGREGATION, sourceId: 'car', targetId: 'wheel' },
           { id: 'l_exh_speed', type: LinkType.EXHIBITION, sourceId: 'car', targetId: 'speed' },
           { id: 'l_gen_electric', type: LinkType.GENERALIZATION, sourceId: 'car', targetId: 'electric-car' },
           { id: 'l_gen_combustion', type: LinkType.GENERALIZATION, sourceId: 'car', targetId: 'combustion-car' },
-          { id: 'l_inst_tesla', type: LinkType.INSTANTIATION, sourceId: 'electric-car', targetId: 'my-tesla' }
+          { id: 'l_inst_tesla', type: LinkType.INSTANTIATION, sourceId: 'electric-car', targetId: 'my-tesla' },
+          { id: 'l_tag_powers', type: LinkType.TAGGED_STRUCTURAL, sourceId: 'engine', targetId: 'wheel', tag: 'powers' }
         ]
       },
       opds: [{
@@ -378,11 +390,85 @@ export const OPM_EXAMPLES: OPMExample[] = [
             { id: 'l_exh_speed' },
             { id: 'l_gen_electric' },
             { id: 'l_gen_combustion' },
-            { id: 'l_inst_tesla' }
+            { id: 'l_inst_tesla' },
+            { id: 'l_tag_powers' }
+          ],
+          tagStyles: [
+            { tag: 'powers', color: '#dc2626', lineStyle: 'solid', showTagLabel: true }
           ]
         }
       }],
       currentOpdId: 'car-sd'
+    }
+  },
+  {
+    id: 'ev-powertrain-architecture',
+    name: 'Electric Vehicle Powertrain Architecture',
+    description: 'A comprehensive structural OPM model demonstrating rich Tagged Structural Links with reusable tags ("powers", "controls", "monitors", "cools") across multiple objects, custom colors, line styles, and badge labels.',
+    model: {
+      logical: {
+        elements: [
+          { id: 'bms', type: ElementType.OBJECT, name: 'Battery Management System', essence: Essence.INFORMATIONAL, affiliation: Affiliation.SYSTEMIC },
+          { id: 'battery', type: ElementType.OBJECT, name: 'Battery Pack', essence: Essence.PHYSICAL, affiliation: Affiliation.SYSTEMIC },
+          { id: 'cooling', type: ElementType.OBJECT, name: 'Cooling Loop', essence: Essence.PHYSICAL, affiliation: Affiliation.SYSTEMIC },
+          { id: 'vcu', type: ElementType.OBJECT, name: 'Vehicle Control Unit', essence: Essence.INFORMATIONAL, affiliation: Affiliation.SYSTEMIC },
+          { id: 'inverter', type: ElementType.OBJECT, name: 'Power Inverter', essence: Essence.PHYSICAL, affiliation: Affiliation.SYSTEMIC },
+          { id: 'cluster', type: ElementType.OBJECT, name: 'Cockpit Display', essence: Essence.PHYSICAL, affiliation: Affiliation.SYSTEMIC },
+          { id: 'motor', type: ElementType.OBJECT, name: 'Traction Motor', essence: Essence.PHYSICAL, affiliation: Affiliation.SYSTEMIC },
+          { id: 'wheels', type: ElementType.OBJECT, name: 'Drive Wheels', essence: Essence.PHYSICAL, affiliation: Affiliation.SYSTEMIC },
+        ],
+        tags: [
+          { id: 'tag-powers', name: 'powers' },
+          { id: 'tag-controls', name: 'controls' },
+          { id: 'tag-monitors', name: 'monitors' },
+          { id: 'tag-cools', name: 'cools' },
+        ],
+        links: [
+          { id: 'l_p1', type: LinkType.TAGGED_STRUCTURAL, sourceId: 'battery', targetId: 'inverter', tag: 'powers' },
+          { id: 'l_p2', type: LinkType.TAGGED_STRUCTURAL, sourceId: 'inverter', targetId: 'motor', tag: 'powers' },
+          { id: 'l_p3', type: LinkType.TAGGED_STRUCTURAL, sourceId: 'motor', targetId: 'wheels', tag: 'powers' },
+          { id: 'l_c1', type: LinkType.TAGGED_STRUCTURAL, sourceId: 'vcu', targetId: 'inverter', tag: 'controls' },
+          { id: 'l_c2', type: LinkType.TAGGED_STRUCTURAL, sourceId: 'vcu', targetId: 'cluster', tag: 'controls' },
+          { id: 'l_m1', type: LinkType.TAGGED_STRUCTURAL, sourceId: 'bms', targetId: 'battery', tag: 'monitors' },
+          { id: 'l_m2', type: LinkType.TAGGED_STRUCTURAL, sourceId: 'vcu', targetId: 'motor', tag: 'monitors' },
+          { id: 'l_cl1', type: LinkType.TAGGED_STRUCTURAL, sourceId: 'cooling', targetId: 'battery', tag: 'cools' },
+          { id: 'l_cl2', type: LinkType.TAGGED_STRUCTURAL, sourceId: 'cooling', targetId: 'motor', tag: 'cools' },
+        ]
+      },
+      opds: [{
+        id: 'ev-sd',
+        name: 'SD',
+        visual: {
+          elements: [
+            { id: 'bms', x: 60, y: 70, width: 200, height: 55 },
+            { id: 'battery', x: 60, y: 190, width: 200, height: 65 },
+            { id: 'cooling', x: 60, y: 340, width: 200, height: 60 },
+            { id: 'vcu', x: 340, y: 65, width: 180, height: 55 },
+            { id: 'inverter', x: 340, y: 190, width: 180, height: 65 },
+            { id: 'cluster', x: 600, y: 65, width: 180, height: 55 },
+            { id: 'motor', x: 600, y: 190, width: 180, height: 65 },
+            { id: 'wheels', x: 860, y: 190, width: 150, height: 65 },
+          ],
+          links: [
+            { id: 'l_p1' },
+            { id: 'l_p2' },
+            { id: 'l_p3' },
+            { id: 'l_c1' },
+            { id: 'l_c2' },
+            { id: 'l_m1' },
+            { id: 'l_m2' },
+            { id: 'l_cl1' },
+            { id: 'l_cl2' }
+          ],
+          tagStyles: [
+            { tag: 'powers', color: '#dc2626', lineStyle: 'solid', showTagLabel: true },
+            { tag: 'controls', color: '#4f46e5', lineStyle: 'dash-dot', showTagLabel: true },
+            { tag: 'monitors', color: '#0891b2', lineStyle: 'dotted', showTagLabel: true },
+            { tag: 'cools', color: '#2563eb', lineStyle: 'dashed', showTagLabel: true },
+          ]
+        }
+      }],
+      currentOpdId: 'ev-sd'
     }
   }
 ];

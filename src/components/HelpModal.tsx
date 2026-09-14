@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Book, Layers, GitBranch, Info, Zap } from 'lucide-react';
+import { X, Book, Layers, GitBranch, Info, Zap, Mail } from 'lucide-react';
 
 interface HelpModalProps {
   isOpen: boolean;
@@ -236,6 +236,23 @@ export default function HelpModal({ isOpen, onClose, onStartTutorial }: HelpModa
             </p>
             <p className="text-xs text-indigo-700 font-semibold leading-relaxed mt-1">
               "The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software, with attribution credited to Avi Shaked."
+            </p>
+          </section>
+
+          {/* Feedback & Suggestions Section */}
+          <section className="border-t border-slate-100 pt-8">
+            <h3 className="text-lg font-bold text-slate-900 mb-2 flex items-center gap-2">
+              <Mail className="w-5 h-5 text-indigo-600" />
+              Feedback & Suggestions
+            </h3>
+            <p className="text-sm text-slate-600 leading-relaxed">
+              We welcome your feedback, ideas, and suggestions for improving OPM-Pro. Please send your comments, questions, or feature requests to{' '}
+              <a 
+                href="mailto:avishaked@tauex.tau.ac.il?subject=OPM-Pro%20Feedback%20and%20Suggestions" 
+                className="text-indigo-600 font-semibold hover:text-indigo-800 underline underline-offset-2 transition-colors"
+              >
+                avishaked@tauex.tau.ac.il
+              </a>.
             </p>
           </section>
         </div>

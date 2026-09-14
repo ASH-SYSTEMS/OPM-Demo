@@ -1,4 +1,4 @@
-import { OPMModel, ElementType, Essence, Affiliation, LinkType } from '../types';
+import { OPMModel, ElementType, Essence, Affiliation, LinkType, VisualTagStyle } from '../types';
 
 export interface TutorialStep {
   title: string;
@@ -13,12 +13,17 @@ export interface TutorialStep {
 
 const BASE_OPD_ID = 'espresso-sd';
 
-const createBaseOpd = (elements: any[], links: any[]) => ({
+const TUTORIAL_TAG_STYLES: VisualTagStyle[] = [
+  { tag: 'supports', color: '#2563eb', lineStyle: 'solid', showTagLabel: true }
+];
+
+const createBaseOpd = (elements: any[], links: any[], tagStyles?: VisualTagStyle[]) => ({
   id: BASE_OPD_ID,
   name: 'SD',
   visual: {
     elements,
-    links
+    links,
+    tagStyles
   }
 });
 
@@ -278,7 +283,63 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     }
   },
 
-  // Step 7: Create dynamic processes (Behavioral processes)
+  // Step 7: Tagged Structural Links
+  {
+    title: 'Connect Objects with Tagged Structural Links (Tag)',
+    description: 'Select the "Tagged Link" tool (Tag icon) on the left sidebar',
+    longDescription: 'Beyond fundamental structural links, ISO 19450 OPM provides domain-specific Tagged Structural Links between objects. Connect "Water Tank" to "Grinder" with the tag "supports". Each tag has a configurable visual representation (custom colors, and line styles: solid, dashed, dotted, dash-dot), and tags are reusable across links. Notice how selecting the link opens the styling panel, and OPL immediately generates: "Water Tank supports Grinder."',
+    targetId: 'tool-btn-TAGGED_STRUCTURAL',
+    selectedId: null,
+    selectedLinkId: 'l_wt_gr_tag',
+    activeTool: LinkType.TAGGED_STRUCTURAL,
+    modelState: {
+      logical: {
+        elements: [
+          { id: 'appl', type: ElementType.OBJECT, name: 'Kitchen Appliance', essence: Essence.PHYSICAL, affiliation: Affiliation.SYSTEMIC },
+          { id: 'espresso-maker', type: ElementType.OBJECT, name: 'Espresso Maker', essence: Essence.PHYSICAL, affiliation: Affiliation.SYSTEMIC },
+          { id: 'temp', type: ElementType.OBJECT, name: 'Water Temperature', essence: Essence.INFORMATIONAL, affiliation: Affiliation.SYSTEMIC },
+          { id: 'my-appl', type: ElementType.OBJECT, name: 'My Office Espresso Maker', essence: Essence.PHYSICAL, affiliation: Affiliation.SYSTEMIC },
+          { id: 'water-tank', type: ElementType.OBJECT, name: 'Water Tank', essence: Essence.PHYSICAL, affiliation: Affiliation.SYSTEMIC },
+          { id: 'grinder', type: ElementType.OBJECT, name: 'Grinder', essence: Essence.PHYSICAL, affiliation: Affiliation.SYSTEMIC },
+          { id: 'wt-empty', type: ElementType.STATE, name: 'empty', essence: Essence.PHYSICAL, affiliation: Affiliation.SYSTEMIC, parentId: 'water-tank', isInitial: true },
+          { id: 'wt-full', type: ElementType.STATE, name: 'full', essence: Essence.PHYSICAL, affiliation: Affiliation.SYSTEMIC, parentId: 'water-tank' }
+        ],
+        tags: [
+          { id: 'tag-supports', name: 'supports' }
+        ],
+        links: [
+          { id: 'l_wt_agg', type: LinkType.AGGREGATION, sourceId: 'espresso-maker', targetId: 'water-tank' },
+          { id: 'l_gr_agg', type: LinkType.AGGREGATION, sourceId: 'espresso-maker', targetId: 'grinder' },
+          { id: 'l_app_gen', type: LinkType.GENERALIZATION, sourceId: 'appl', targetId: 'espresso-maker' },
+          { id: 'l_temp_exh', type: LinkType.EXHIBITION, sourceId: 'espresso-maker', targetId: 'temp' },
+          { id: 'l_my_inst', type: LinkType.INSTANTIATION, sourceId: 'espresso-maker', targetId: 'my-appl' },
+          { id: 'l_wt_gr_tag', type: LinkType.TAGGED_STRUCTURAL, sourceId: 'water-tank', targetId: 'grinder', tag: 'supports' }
+        ]
+      },
+      opds: [
+        createBaseOpd([
+          { id: 'appl', x: 350, y: 10, width: 140, height: 50 },
+          { id: 'espresso-maker', x: 340, y: 110, width: 160, height: 75 },
+          { id: 'temp', x: 100, y: 121, width: 130, height: 53 },
+          { id: 'my-appl', x: 580, y: 120, width: 175, height: 55 },
+          { id: 'water-tank', x: 180, y: 260, width: 140, height: 80 },
+          { id: 'grinder', x: 500, y: 260, width: 140, height: 80 },
+          { id: 'wt-empty', x: 12, y: 35, width: 50, height: 35, parentId: 'water-tank' },
+          { id: 'wt-full', x: 78, y: 35, width: 50, height: 35, parentId: 'water-tank' }
+        ], [
+          { id: 'l_wt_agg' },
+          { id: 'l_gr_agg' },
+          { id: 'l_app_gen' },
+          { id: 'l_temp_exh' },
+          { id: 'l_my_inst' },
+          { id: 'l_wt_gr_tag' }
+        ], TUTORIAL_TAG_STYLES)
+      ],
+      currentOpdId: BASE_OPD_ID
+    }
+  },
+
+  // Step 8: Create dynamic processes (Behavioral processes)
   {
     title: 'Model Dynamic System Behavior (Processes)',
     description: 'Now, select the "Process" tool in the left toolbar (hollow ellipse)',
@@ -301,12 +362,16 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
           { id: 'heating', type: ElementType.PROCESS, name: 'Water Heating', essence: Essence.INFORMATIONAL, affiliation: Affiliation.SYSTEMIC },
           { id: 'brewing', type: ElementType.PROCESS, name: 'Espresso Brewing', essence: Essence.INFORMATIONAL, affiliation: Affiliation.SYSTEMIC }
         ],
+        tags: [
+          { id: 'tag-supports', name: 'supports' }
+        ],
         links: [
           { id: 'l_wt_agg', type: LinkType.AGGREGATION, sourceId: 'espresso-maker', targetId: 'water-tank' },
           { id: 'l_gr_agg', type: LinkType.AGGREGATION, sourceId: 'espresso-maker', targetId: 'grinder' },
           { id: 'l_app_gen', type: LinkType.GENERALIZATION, sourceId: 'appl', targetId: 'espresso-maker' },
           { id: 'l_temp_exh', type: LinkType.EXHIBITION, sourceId: 'espresso-maker', targetId: 'temp' },
-          { id: 'l_my_inst', type: LinkType.INSTANTIATION, sourceId: 'espresso-maker', targetId: 'my-appl' }
+          { id: 'l_my_inst', type: LinkType.INSTANTIATION, sourceId: 'espresso-maker', targetId: 'my-appl' },
+          { id: 'l_wt_gr_tag', type: LinkType.TAGGED_STRUCTURAL, sourceId: 'water-tank', targetId: 'grinder', tag: 'supports' }
         ]
       },
       opds: [
@@ -326,14 +391,15 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
           { id: 'l_gr_agg' },
           { id: 'l_app_gen' },
           { id: 'l_temp_exh' },
-          { id: 'l_my_inst' }
-        ])
+          { id: 'l_my_inst' },
+          { id: 'l_wt_gr_tag' }
+        ], TUTORIAL_TAG_STYLES)
       ],
       currentOpdId: BASE_OPD_ID
     }
   },
 
-  // Step 8: Interactive instrument link condition
+  // Step 9: Interactive instrument link condition
   {
     title: 'Add procedural conditions (Instrument Link)',
     description: 'Select the "Instrument" link tool on the toolbar (empty circle arrow)',
@@ -359,12 +425,16 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
           { id: 'cup-empty', type: ElementType.STATE, name: 'empty', essence: Essence.PHYSICAL, affiliation: Affiliation.SYSTEMIC, parentId: 'cup-obj', isInitial: true },
           { id: 'cup-filled', type: ElementType.STATE, name: 'filled', essence: Essence.PHYSICAL, affiliation: Affiliation.SYSTEMIC, parentId: 'cup-obj', isFinal: true }
         ],
+        tags: [
+          { id: 'tag-supports', name: 'supports' }
+        ],
         links: [
           { id: 'l_wt_agg', type: LinkType.AGGREGATION, sourceId: 'espresso-maker', targetId: 'water-tank' },
           { id: 'l_gr_agg', type: LinkType.AGGREGATION, sourceId: 'espresso-maker', targetId: 'grinder' },
           { id: 'l_app_gen', type: LinkType.GENERALIZATION, sourceId: 'appl', targetId: 'espresso-maker' },
           { id: 'l_temp_exh', type: LinkType.EXHIBITION, sourceId: 'espresso-maker', targetId: 'temp' },
           { id: 'l_my_inst', type: LinkType.INSTANTIATION, sourceId: 'espresso-maker', targetId: 'my-appl' },
+          { id: 'l_wt_gr_tag', type: LinkType.TAGGED_STRUCTURAL, sourceId: 'water-tank', targetId: 'grinder', tag: 'supports' },
           { id: 'l_wt_heat_inst', type: LinkType.INSTRUMENT, sourceId: 'wt-full', targetId: 'heating' }
         ]
       },
@@ -389,14 +459,15 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
           { id: 'l_app_gen' },
           { id: 'l_temp_exh' },
           { id: 'l_my_inst' },
+          { id: 'l_wt_gr_tag' },
           { id: 'l_wt_heat_inst' }
-        ])
+        ], TUTORIAL_TAG_STYLES)
       ],
       currentOpdId: BASE_OPD_ID
     }
   },
 
-  // Step 9: Process Invocation & Output Generation
+  // Step 10: Process Invocation & Output Generation
   {
     title: 'Connect dynamic triggering (Invocation & Results)',
     description: 'Select the "Invoke" link tool (Zap symbol) on the left sidebar',
@@ -422,12 +493,16 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
           { id: 'cup-empty', type: ElementType.STATE, name: 'empty', essence: Essence.PHYSICAL, affiliation: Affiliation.SYSTEMIC, parentId: 'cup-obj', isInitial: true },
           { id: 'cup-filled', type: ElementType.STATE, name: 'filled', essence: Essence.PHYSICAL, affiliation: Affiliation.SYSTEMIC, parentId: 'cup-obj', isFinal: true }
         ],
+        tags: [
+          { id: 'tag-supports', name: 'supports' }
+        ],
         links: [
           { id: 'l_wt_agg', type: LinkType.AGGREGATION, sourceId: 'espresso-maker', targetId: 'water-tank' },
           { id: 'l_gr_agg', type: LinkType.AGGREGATION, sourceId: 'espresso-maker', targetId: 'grinder' },
           { id: 'l_app_gen', type: LinkType.GENERALIZATION, sourceId: 'appl', targetId: 'espresso-maker' },
           { id: 'l_temp_exh', type: LinkType.EXHIBITION, sourceId: 'espresso-maker', targetId: 'temp' },
           { id: 'l_my_inst', type: LinkType.INSTANTIATION, sourceId: 'espresso-maker', targetId: 'my-appl' },
+          { id: 'l_wt_gr_tag', type: LinkType.TAGGED_STRUCTURAL, sourceId: 'water-tank', targetId: 'grinder', tag: 'supports' },
           { id: 'l_wt_heat_inst', type: LinkType.INSTRUMENT, sourceId: 'wt-full', targetId: 'heating' },
           { id: 'l_heat_brew_inv', type: LinkType.INVOCATION, sourceId: 'heating', targetId: 'brewing' },
           { id: 'l_brew_cup_res', type: LinkType.RESULT, sourceId: 'brewing', targetId: 'cup-filled' }
@@ -454,20 +529,21 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
           { id: 'l_app_gen' },
           { id: 'l_temp_exh' },
           { id: 'l_my_inst' },
+          { id: 'l_wt_gr_tag' },
           { id: 'l_wt_heat_inst' },
           { id: 'l_heat_brew_inv' },
           { id: 'l_brew_cup_res' }
-        ])
+        ], TUTORIAL_TAG_STYLES)
       ],
       currentOpdId: BASE_OPD_ID
     }
   },
 
-  // Step 10: Human Readable OPL panel validation
+  // Step 11: Human Readable OPL panel validation
   {
     title: 'Dynamic English Specification generation (OPL)',
     description: 'Look at the Object-Process Language (OPL) pane on the right',
-    longDescription: 'Witness the core magic of OPM! In real time as your diagrams grow, OPM-Pro auto-synthesizes human-readable syntax in the right hand column, documenting complex behavioral linkages (e.g. "Espresso brewing requires Water Tank in state full", "My Office Espresso Maker is an instance of Espresso Maker"). Stakeholders and designers can immediately read, verify, and export this zero-mistake roadmap.',
+    longDescription: 'Witness the core magic of OPM! In real time as your diagrams grow, OPM-Pro auto-synthesizes human-readable syntax in the right hand column, documenting complex behavioral linkages (e.g. "Espresso brewing requires Water Tank in state full", "Water Tank supports Grinder", "My Office Espresso Maker is an instance of Espresso Maker"). Stakeholders and designers can immediately read, verify, and export this zero-mistake roadmap.',
     targetId: 'opl-panel',
     selectedId: null,
     selectedLinkId: null,
@@ -489,12 +565,16 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
           { id: 'cup-empty', type: ElementType.STATE, name: 'empty', essence: Essence.PHYSICAL, affiliation: Affiliation.SYSTEMIC, parentId: 'cup-obj', isInitial: true },
           { id: 'cup-filled', type: ElementType.STATE, name: 'filled', essence: Essence.PHYSICAL, affiliation: Affiliation.SYSTEMIC, parentId: 'cup-obj', isFinal: true }
         ],
+        tags: [
+          { id: 'tag-supports', name: 'supports' }
+        ],
         links: [
           { id: 'l_wt_agg', type: LinkType.AGGREGATION, sourceId: 'espresso-maker', targetId: 'water-tank' },
           { id: 'l_gr_agg', type: LinkType.AGGREGATION, sourceId: 'espresso-maker', targetId: 'grinder' },
           { id: 'l_app_gen', type: LinkType.GENERALIZATION, sourceId: 'appl', targetId: 'espresso-maker' },
           { id: 'l_temp_exh', type: LinkType.EXHIBITION, sourceId: 'espresso-maker', targetId: 'temp' },
           { id: 'l_my_inst', type: LinkType.INSTANTIATION, sourceId: 'espresso-maker', targetId: 'my-appl' },
+          { id: 'l_wt_gr_tag', type: LinkType.TAGGED_STRUCTURAL, sourceId: 'water-tank', targetId: 'grinder', tag: 'supports' },
           { id: 'l_wt_heat_inst', type: LinkType.INSTRUMENT, sourceId: 'wt-full', targetId: 'heating' },
           { id: 'l_heat_brew_inv', type: LinkType.INVOCATION, sourceId: 'heating', targetId: 'brewing' },
           { id: 'l_brew_cup_res', type: LinkType.RESULT, sourceId: 'brewing', targetId: 'cup-filled' }
@@ -521,16 +601,17 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
           { id: 'l_app_gen' },
           { id: 'l_temp_exh' },
           { id: 'l_my_inst' },
+          { id: 'l_wt_gr_tag' },
           { id: 'l_wt_heat_inst' },
           { id: 'l_heat_brew_inv' },
           { id: 'l_brew_cup_res' }
-        ])
+        ], TUTORIAL_TAG_STYLES)
       ],
       currentOpdId: BASE_OPD_ID
     }
   },
 
-  // Step 11: Zoom Into Process Elaboration
+  // Step 12: Zoom Into Process Elaboration
   {
     title: 'Zoom-In Process Elaboration',
     description: 'Double-click a process to explore its lower-level steps',
@@ -559,12 +640,16 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
           { id: 'water-sensing', type: ElementType.PROCESS, name: 'Water Sensing', essence: Essence.INFORMATIONAL, affiliation: Affiliation.SYSTEMIC, parentId: 'heating' },
           { id: 'ele-powering', type: ElementType.PROCESS, name: 'Element Powering', essence: Essence.INFORMATIONAL, affiliation: Affiliation.SYSTEMIC, parentId: 'heating' }
         ],
+        tags: [
+          { id: 'tag-supports', name: 'supports' }
+        ],
         links: [
           { id: 'l_wt_agg', type: LinkType.AGGREGATION, sourceId: 'espresso-maker', targetId: 'water-tank' },
           { id: 'l_gr_agg', type: LinkType.AGGREGATION, sourceId: 'espresso-maker', targetId: 'grinder' },
           { id: 'l_app_gen', type: LinkType.GENERALIZATION, sourceId: 'appl', targetId: 'espresso-maker' },
           { id: 'l_temp_exh', type: LinkType.EXHIBITION, sourceId: 'espresso-maker', targetId: 'temp' },
           { id: 'l_my_inst', type: LinkType.INSTANTIATION, sourceId: 'espresso-maker', targetId: 'my-appl' },
+          { id: 'l_wt_gr_tag', type: LinkType.TAGGED_STRUCTURAL, sourceId: 'water-tank', targetId: 'grinder', tag: 'supports' },
           { id: 'l_wt_heat_inst', type: LinkType.INSTRUMENT, sourceId: 'wt-full', targetId: 'heating' },
           { id: 'l_heat_brew_inv', type: LinkType.INVOCATION, sourceId: 'heating', targetId: 'brewing' },
           { id: 'l_brew_cup_res', type: LinkType.RESULT, sourceId: 'brewing', targetId: 'cup-filled' }
@@ -591,10 +676,11 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
           { id: 'l_app_gen' },
           { id: 'l_temp_exh' },
           { id: 'l_my_inst' },
+          { id: 'l_wt_gr_tag' },
           { id: 'l_wt_heat_inst' },
           { id: 'l_heat_brew_inv' },
           { id: 'l_brew_cup_res' }
-        ]),
+        ], TUTORIAL_TAG_STYLES),
         {
           id: 'heating-zoom',
           name: 'Water Heating in-zoomed',
@@ -605,7 +691,8 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
               { id: 'water-sensing', x: 180, y: 110, width: 180, height: 65, parentId: 'heating' },
               { id: 'ele-powering', x: 180, y: 230, width: 180, height: 65, parentId: 'heating' }
             ],
-            links: []
+            links: [],
+            tagStyles: []
           }
         }
       ],
@@ -613,7 +700,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     }
   },
 
-  // Step 12: View the Zoomed-In Process in OPL
+  // Step 13: View the Zoomed-In Process in OPL
   {
     title: 'OPL Zoom-In & Control Flow Reflection',
     description: 'Notice the resulting human-readable sentences generated automatically',
@@ -642,12 +729,16 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
           { id: 'water-sensing', type: ElementType.PROCESS, name: 'Water Sensing', essence: Essence.INFORMATIONAL, affiliation: Affiliation.SYSTEMIC, parentId: 'heating' },
           { id: 'ele-powering', type: ElementType.PROCESS, name: 'Element Powering', essence: Essence.INFORMATIONAL, affiliation: Affiliation.SYSTEMIC, parentId: 'heating' }
         ],
+        tags: [
+          { id: 'tag-supports', name: 'supports' }
+        ],
         links: [
           { id: 'l_wt_agg', type: LinkType.AGGREGATION, sourceId: 'espresso-maker', targetId: 'water-tank' },
           { id: 'l_gr_agg', type: LinkType.AGGREGATION, sourceId: 'espresso-maker', targetId: 'grinder' },
           { id: 'l_app_gen', type: LinkType.GENERALIZATION, sourceId: 'appl', targetId: 'espresso-maker' },
           { id: 'l_temp_exh', type: LinkType.EXHIBITION, sourceId: 'espresso-maker', targetId: 'temp' },
           { id: 'l_my_inst', type: LinkType.INSTANTIATION, sourceId: 'espresso-maker', targetId: 'my-appl' },
+          { id: 'l_wt_gr_tag', type: LinkType.TAGGED_STRUCTURAL, sourceId: 'water-tank', targetId: 'grinder', tag: 'supports' },
           { id: 'l_wt_heat_inst', type: LinkType.INSTRUMENT, sourceId: 'wt-full', targetId: 'heating' },
           { id: 'l_heat_brew_inv', type: LinkType.INVOCATION, sourceId: 'heating', targetId: 'brewing' },
           { id: 'l_brew_cup_res', type: LinkType.RESULT, sourceId: 'brewing', targetId: 'cup-filled' }
@@ -674,10 +765,11 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
           { id: 'l_app_gen' },
           { id: 'l_temp_exh' },
           { id: 'l_my_inst' },
+          { id: 'l_wt_gr_tag' },
           { id: 'l_wt_heat_inst' },
           { id: 'l_heat_brew_inv' },
           { id: 'l_brew_cup_res' }
-        ]),
+        ], TUTORIAL_TAG_STYLES),
         {
           id: 'heating-zoom',
           name: 'Water Heating in-zoomed',
@@ -688,7 +780,8 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
               { id: 'water-sensing', x: 180, y: 110, width: 180, height: 65, parentId: 'heating' },
               { id: 'ele-powering', x: 180, y: 230, width: 180, height: 65, parentId: 'heating' }
             ],
-            links: []
+            links: [],
+            tagStyles: []
           }
         }
       ],
@@ -696,11 +789,11 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     }
   },
 
-  // Step 13: Go back to original SD and show full model OPL update
+  // Step 14: Go back to original SD and show full model OPL update
   {
     title: 'Integrated Multi-Diagram OPL Alignment',
     description: 'See the complete system language compiled cohesively',
-    longDescription: 'We are now back on the high-level System Diagram (SD). In the OPL panel, change the view mode from "Diagram" to "Full Model". Observe how the tool compiles all diagram levels together automatically. It preserves the high-level OPM relationships of the main system diagram, while seamlessly integrating the low-level elaborated details and sub-processes of "Water Heating" in a single unified text document.',
+    longDescription: 'We are now back on the high-level System Diagram (SD). In the OPL panel, change the view mode from "Diagram" to "Full Model". Observe how the tool compiles all diagram levels together automatically. It preserves the high-level OPM relationships and tagged structural links ("Water Tank supports Grinder.") of the main system diagram, while seamlessly integrating the low-level elaborated details and sub-processes of "Water Heating" in a single unified text document.',
     targetId: 'opl-panel',
     selectedId: null,
     selectedLinkId: null,
@@ -725,12 +818,16 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
           { id: 'water-sensing', type: ElementType.PROCESS, name: 'Water Sensing', essence: Essence.INFORMATIONAL, affiliation: Affiliation.SYSTEMIC, parentId: 'heating' },
           { id: 'ele-powering', type: ElementType.PROCESS, name: 'Element Powering', essence: Essence.INFORMATIONAL, affiliation: Affiliation.SYSTEMIC, parentId: 'heating' }
         ],
+        tags: [
+          { id: 'tag-supports', name: 'supports' }
+        ],
         links: [
           { id: 'l_wt_agg', type: LinkType.AGGREGATION, sourceId: 'espresso-maker', targetId: 'water-tank' },
           { id: 'l_gr_agg', type: LinkType.AGGREGATION, sourceId: 'espresso-maker', targetId: 'grinder' },
           { id: 'l_app_gen', type: LinkType.GENERALIZATION, sourceId: 'appl', targetId: 'espresso-maker' },
           { id: 'l_temp_exh', type: LinkType.EXHIBITION, sourceId: 'espresso-maker', targetId: 'temp' },
           { id: 'l_my_inst', type: LinkType.INSTANTIATION, sourceId: 'espresso-maker', targetId: 'my-appl' },
+          { id: 'l_wt_gr_tag', type: LinkType.TAGGED_STRUCTURAL, sourceId: 'water-tank', targetId: 'grinder', tag: 'supports' },
           { id: 'l_wt_heat_inst', type: LinkType.INSTRUMENT, sourceId: 'wt-full', targetId: 'heating' },
           { id: 'l_heat_brew_inv', type: LinkType.INVOCATION, sourceId: 'heating', targetId: 'brewing' },
           { id: 'l_brew_cup_res', type: LinkType.RESULT, sourceId: 'brewing', targetId: 'cup-filled' }
@@ -757,10 +854,11 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
           { id: 'l_app_gen' },
           { id: 'l_temp_exh' },
           { id: 'l_my_inst' },
+          { id: 'l_wt_gr_tag' },
           { id: 'l_wt_heat_inst' },
           { id: 'l_heat_brew_inv' },
           { id: 'l_brew_cup_res' }
-        ]),
+        ], TUTORIAL_TAG_STYLES),
         {
           id: 'heating-zoom',
           name: 'Water Heating in-zoomed',
@@ -771,7 +869,8 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
               { id: 'water-sensing', x: 180, y: 110, width: 180, height: 65, parentId: 'heating' },
               { id: 'ele-powering', x: 180, y: 230, width: 180, height: 65, parentId: 'heating' }
             ],
-            links: []
+            links: [],
+            tagStyles: []
           }
         }
       ],

@@ -31,7 +31,10 @@ import {
   Check,
   Undo,
   Redo,
-  Sparkles
+  Sparkles,
+  Tag,
+  GraduationCap,
+  Edit3
 } from 'lucide-react';
 import { 
   ElementType, 
@@ -43,9 +46,18 @@ import {
   OPMModel,
   Essence,
   Affiliation,
-  OPD
+  OPD,
+  TagDefinition,
+  VisualTagStyle,
+  TagLineStyle
 } from './types';
 import { generateOPL } from './services/oplService';
+import { normalizeOPMModel } from './services/modelMigration';
+import { 
+  analyzeModelHierarchy, 
+  synthesizeDiagramsFromLogical, 
+  type ModelHierarchyInfo 
+} from './services/diagramSynthesisService';
 import { OPM_EXAMPLES } from './constants/examples';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -61,13 +73,12 @@ function cn(...inputs: ClassValue[]) {
 export default function App() {
   const initialOpdId = uuidv4();
   const [model, setModel] = useState<OPMModel>(() => {
-    // Try to load from localStorage if needed, or use default
     return {
-      logical: { elements: [], links: [] },
+      logical: { elements: [], links: [], tags: [] },
       opds: [{
         id: initialOpdId,
         name: 'SD',
-        visual: { elements: [], links: [] }
+        visual: { elements: [], links: [], tagStyles: [] }
       }],
       currentOpdId: initialOpdId
     };
@@ -121,6 +132,288 @@ export default function App() {
   const [addExistingTab, setAddExistingTab] = useState<'elements' | 'links'>('elements');
   const [selectedAddExistingIds, setSelectedAddExistingIds] = useState<string[]>([]);
 
+  // Tagged Structural Link Dialog & Styling State
+  interface TaggedLinkDialogState {
+    isOpen: boolean;
+    sourceId: string;
+    targetId: string;
+    sourceName: string;
+    targetName: string;
+  }
+  const [taggedLinkDialog, setTaggedLinkDialog] = useState<TaggedLinkDialogState | null>(null);
+  const [selectedTagInput, setSelectedTagInput] = useState<string>('supports');
+  const [newTagColor, setNewTagColor] = useState<string>('#2563eb');
+  const [newTagLineStyle, setNewTagLineStyle] = useState<TagLineStyle>('solid');
+  const [newTagShowLabel, setNewTagShowLabel] = useState<boolean>(true);
+
+  const handleConfirmTaggedLink = (tagName: string, color?: string, lineStyle?: TagLineStyle, showLabel?: boolean) => {
+    if (!taggedLinkDialog) return;
+    const cleanTag = tagName.trim() || 'supports';
+    const linkId = uuidv4();
+
+    const existingTags = model.logical.tags || [];
+    const existingDef = existingTags.find(t => t.name.toLowerCase() === cleanTag.toLowerCase());
+
+    let updatedTags = [...existingTags];
+    if (!existingDef) {
+      updatedTags.push({
+        id: uuidv4(),
+        name: cleanTag
+      });
+    }
+
+    const newLogical: LogicalLink = {
+      id: linkId,
+      type: LinkType.TAGGED_STRUCTURAL,
+      sourceId: taggedLinkDialog.sourceId,
+      targetId: taggedLinkDialog.targetId,
+      tag: existingDef ? existingDef.name : cleanTag
+    };
+    const newVisual: VisualLink = {
+      id: linkId,
+      showTagLabel: showLabel !== undefined ? showLabel : undefined
+    };
+
+    updateModel(prev => {
+      const currentOpd = prev.opds.find(o => o.id === prev.currentOpdId);
+      const existingTagStyles = currentOpd?.visual.tagStyles || [];
+      const hasStyle = existingTagStyles.some(ts => ts.tag.toLowerCase() === cleanTag.toLowerCase());
+
+      const updatedTagStyles = hasStyle
+        ? existingTagStyles
+        : [...existingTagStyles, {
+            tag: cleanTag,
+            color: color || newTagColor || '#2563eb',
+            lineStyle: lineStyle || newTagLineStyle || 'solid',
+            showTagLabel: showLabel !== undefined ? showLabel : newTagShowLabel
+          }];
+
+      return {
+        ...prev,
+        logical: {
+          ...prev.logical,
+          tags: updatedTags,
+          links: [...prev.logical.links, newLogical]
+        },
+        opds: prev.opds.map(o => o.id === prev.currentOpdId ? {
+          ...o,
+          visual: {
+            ...o.visual,
+            links: [...o.visual.links, newVisual],
+            tagStyles: updatedTagStyles
+          }
+        } : o)
+      };
+    });
+
+    setSelectedLinkId(linkId);
+    setSelectedId(null);
+    setTaggedLinkDialog(null);
+    setTool('select');
+  };
+
+  const updateTagVisual = (tagName: string, updates: Partial<VisualTagStyle>) => {
+    updateModel(prev => ({
+      ...prev,
+      opds: prev.opds.map(o => {
+        if (o.id !== prev.currentOpdId) return o;
+        const existingTagStyles = o.visual.tagStyles || [];
+        const idx = existingTagStyles.findIndex(ts => ts.tag.toLowerCase() === tagName.toLowerCase());
+        let newTagStyles: VisualTagStyle[];
+        if (idx >= 0) {
+          newTagStyles = [...existingTagStyles];
+          newTagStyles[idx] = { ...newTagStyles[idx], ...updates };
+        } else {
+          newTagStyles = [
+            ...existingTagStyles,
+            {
+              tag: tagName,
+              color: '#2563eb',
+              lineStyle: 'solid' as TagLineStyle,
+              showTagLabel: true,
+              ...updates
+            }
+          ];
+        }
+        return {
+          ...o,
+          visual: {
+            ...o.visual,
+            tagStyles: newTagStyles
+          }
+        };
+      })
+    }));
+  };
+
+  const setAllLinksTagVisibility = (tagName: string, showLabel: boolean) => {
+    updateModel(prev => ({
+      ...prev,
+      opds: prev.opds.map(o => {
+        if (o.id !== prev.currentOpdId) return o;
+        const existingTagStyles = o.visual.tagStyles || [];
+        const idx = existingTagStyles.findIndex(ts => ts.tag.toLowerCase() === tagName.toLowerCase());
+        let newTagStyles: VisualTagStyle[];
+        if (idx >= 0) {
+          newTagStyles = [...existingTagStyles];
+          newTagStyles[idx] = { ...newTagStyles[idx], showTagLabel: showLabel };
+        } else {
+          newTagStyles = [
+            ...existingTagStyles,
+            {
+              tag: tagName,
+              color: '#2563eb',
+              lineStyle: 'solid' as TagLineStyle,
+              showTagLabel: showLabel
+            }
+          ];
+        }
+        // Reset per-link override for links with this tag in this OPD so they all adhere to the global setting
+        const updatedVisualLinks = o.visual.links.map(vl => {
+          const logical = prev.logical.links.find(l => l.id === vl.id);
+          if (logical?.type === LinkType.TAGGED_STRUCTURAL && logical.tag?.toLowerCase() === tagName.toLowerCase()) {
+            const { showTagLabel: _, ...rest } = vl;
+            return rest;
+          }
+          return vl;
+        });
+        return {
+          ...o,
+          visual: {
+            ...o.visual,
+            links: updatedVisualLinks,
+            tagStyles: newTagStyles
+          }
+        };
+      })
+    }));
+  };
+
+  // Global Tag Renaming & Tag Management State
+  const [renameTagModal, setRenameTagModal] = useState<{
+    isOpen: boolean;
+    oldTag: string;
+    initialNewTag?: string;
+  } | null>(null);
+  const [renameInputVal, setRenameInputVal] = useState('');
+  const [isManageTagsOpen, setIsManageTagsOpen] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (toastMessage) {
+      const timer = setTimeout(() => {
+        setToastMessage(null);
+      }, 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [toastMessage]);
+
+  const renameTagGlobally = (oldTag: string, newTag: string) => {
+    const cleanOld = oldTag.trim();
+    const cleanNew = newTag.trim();
+    if (!cleanOld || !cleanNew) return;
+    if (cleanOld.toLowerCase() === cleanNew.toLowerCase()) {
+      if (cleanOld === cleanNew) return;
+    }
+
+    pushToHistory();
+
+    const matchingRelationsCount = model.logical.links.filter(
+      l => l.type === LinkType.TAGGED_STRUCTURAL && l.tag?.trim().toLowerCase() === cleanOld.toLowerCase()
+    ).length;
+
+    updateModel(prev => {
+      const existingTags = prev.logical.tags || [];
+      const targetTagAlreadyExists = existingTags.some(t => t.name.toLowerCase() === cleanNew.toLowerCase());
+
+      let updatedTags: TagDefinition[];
+      if (targetTagAlreadyExists) {
+        // Target tag definition already exists; remove old tag to avoid duplicate definitions
+        updatedTags = existingTags.filter(t => t.name.toLowerCase() !== cleanOld.toLowerCase());
+      } else {
+        const oldIndex = existingTags.findIndex(t => t.name.toLowerCase() === cleanOld.toLowerCase());
+        if (oldIndex >= 0) {
+          updatedTags = existingTags.map((t, idx) => idx === oldIndex ? { ...t, name: cleanNew } : t);
+        } else {
+          updatedTags = [...existingTags, { id: uuidv4(), name: cleanNew }];
+        }
+      }
+
+      // Rename tag on all logical links matching cleanOld
+      const updatedLinks = prev.logical.links.map(l => {
+        if (l.type === LinkType.TAGGED_STRUCTURAL && l.tag?.trim().toLowerCase() === cleanOld.toLowerCase()) {
+          return { ...l, tag: cleanNew };
+        }
+        return l;
+      });
+
+      // Update opds visual tagStyles across all diagrams
+      const updatedOpds = prev.opds.map(opd => {
+        const existingStyles = opd.visual.tagStyles || [];
+        const oldStyleIndex = existingStyles.findIndex(ts => ts.tag.toLowerCase() === cleanOld.toLowerCase());
+        if (oldStyleIndex === -1) {
+          return opd;
+        }
+        const targetStyleIndex = existingStyles.findIndex(ts => ts.tag.toLowerCase() === cleanNew.toLowerCase());
+        let newStyles: VisualTagStyle[];
+        if (targetStyleIndex >= 0) {
+          // cleanNew already has its own visual style in this diagram; drop oldStyle
+          newStyles = existingStyles.filter((_, idx) => idx !== oldStyleIndex);
+        } else {
+          // Transfer this diagram's styling to cleanNew
+          newStyles = existingStyles.map((ts, idx) => idx === oldStyleIndex ? { ...ts, tag: cleanNew } : ts);
+        }
+        return {
+          ...opd,
+          visual: {
+            ...opd.visual,
+            tagStyles: newStyles
+          }
+        };
+      });
+
+      return {
+        ...prev,
+        logical: {
+          ...prev.logical,
+          tags: updatedTags,
+          links: updatedLinks
+        },
+        opds: updatedOpds
+      };
+    });
+
+    setToastMessage(`Renamed tag "${cleanOld}" to "${cleanNew}" in ${matchingRelationsCount} relation${matchingRelationsCount === 1 ? '' : 's'}.`);
+    setRenameTagModal(null);
+  };
+
+  const deleteTagGlobally = (tagName: string) => {
+    const clean = tagName.trim();
+    if (!clean) return;
+    pushToHistory();
+    updateModel(prev => ({
+      ...prev,
+      logical: {
+        ...prev.logical,
+        tags: (prev.logical.tags || []).filter(t => t.name.toLowerCase() !== clean.toLowerCase()),
+        links: prev.logical.links.map(l => {
+          if (l.type === LinkType.TAGGED_STRUCTURAL && l.tag?.trim().toLowerCase() === clean.toLowerCase()) {
+            return { ...l, tag: 'relates to' };
+          }
+          return l;
+        })
+      },
+      opds: prev.opds.map(opd => ({
+        ...opd,
+        visual: {
+          ...opd.visual,
+          tagStyles: (opd.visual.tagStyles || []).filter(ts => ts.tag.toLowerCase() !== clean.toLowerCase())
+        }
+      }))
+    }));
+    setToastMessage(`Removed tag "${clean}".`);
+  };
+
   // Tutorial State Definitions
   const [isTutorialActive, setIsTutorialActive] = useState(false);
   const [currentTutorialStep, setCurrentTutorialStep] = useState(0);
@@ -131,7 +424,7 @@ export default function App() {
     setTutorialBackup(model);
     setIsTutorialActive(true);
     setCurrentTutorialStep(0);
-    setModel(TUTORIAL_STEPS[0].modelState);
+    setModel(normalizeOPMModel(TUTORIAL_STEPS[0].modelState));
     setSelectedId(null);
     setSelectedLinkId(null);
     setTool('select');
@@ -142,10 +435,13 @@ export default function App() {
       const nextStep = currentTutorialStep + 1;
       setCurrentTutorialStep(nextStep);
       const step = TUTORIAL_STEPS[nextStep];
-      setModel(step.modelState);
+      setModel(normalizeOPMModel(step.modelState));
       setSelectedId(step.selectedId);
       setSelectedLinkId(step.selectedLinkId);
       setTool(step.activeTool);
+      if (nextStep === TUTORIAL_STEPS.length - 1) {
+        setOplMode('full');
+      }
     }
   };
 
@@ -154,10 +450,13 @@ export default function App() {
       const prevStep = currentTutorialStep - 1;
       setCurrentTutorialStep(prevStep);
       const step = TUTORIAL_STEPS[prevStep];
-      setModel(step.modelState);
+      setModel(normalizeOPMModel(step.modelState));
       setSelectedId(step.selectedId);
       setSelectedLinkId(step.selectedLinkId);
       setTool(step.activeTool);
+      if (prevStep < TUTORIAL_STEPS.length - 1) {
+        setOplMode('diagram');
+      }
     }
   };
 
@@ -199,6 +498,17 @@ export default function App() {
     message: '',
     onConfirm: () => {},
   });
+
+  const [infoModelPrompt, setInfoModelPrompt] = useState<{
+    isOpen: boolean;
+    logical: {
+      elements: LogicalElement[];
+      links: LogicalLink[];
+      tags?: TagDefinition[];
+    };
+    hierarchy: ModelHierarchyInfo;
+    fileName?: string;
+  } | null>(null);
 
   const stageRef = useRef<any>(null);
 
@@ -741,6 +1051,170 @@ export default function App() {
     }
   };
 
+  const processImportData = (imported: any, fileName?: string) => {
+    if (!imported || typeof imported !== 'object') {
+      setDialog({
+        isOpen: true,
+        title: "Import Failed",
+        message: "The uploaded file does not contain valid JSON data.",
+        confirmLabel: "OK",
+        onConfirm: () => setDialog(prev => ({ ...prev, isOpen: false }))
+      });
+      return;
+    }
+
+    // Check if visual diagram representations exist
+    const hasDiagrams = Array.isArray(imported.diagrams) && imported.diagrams.length > 0;
+    const hasOpds = Array.isArray(imported.opds) && imported.opds.length > 0;
+    const hasVisual = imported.visual && Array.isArray(imported.visual.elements) && imported.visual.elements.length > 0;
+    const hasInlineVisual = Array.isArray(imported.elements) && imported.elements.some((el: any) => el.x !== undefined || el.y !== undefined);
+
+    // Extract logical model candidates
+    const rawLogical = imported.logicalModel || imported.logical || (Array.isArray(imported.elements) ? imported : null);
+    const elements: any[] = rawLogical?.elements || (Array.isArray(imported.elements) ? imported.elements : null);
+    const links: any[] = rawLogical?.links || (Array.isArray(imported.links) ? imported.links : []);
+    const tags: any[] = rawLogical?.tags || (Array.isArray(imported.tags) ? imported.tags : []);
+
+    // A: PURE INFORMATION MODEL (No visual diagrams / representations)
+    if (!hasDiagrams && !hasOpds && !hasVisual && !hasInlineVisual) {
+      if (elements && Array.isArray(elements) && elements.length > 0) {
+        const cleanElements: LogicalElement[] = elements.map((el: any) => {
+          const { x, y, width, height, isExpanded, ...rest } = el;
+          return {
+            id: rest.id || uuidv4(),
+            type: rest.type || ElementType.OBJECT,
+            name: rest.name || 'Unnamed',
+            essence: rest.essence || Essence.INFORMATIONAL,
+            affiliation: rest.affiliation || Affiliation.SYSTEMIC,
+            parentId: rest.parentId,
+            isInitial: rest.isInitial,
+            isFinal: rest.isFinal,
+            isDefault: rest.isDefault,
+            isActive: rest.isActive
+          };
+        });
+
+        const cleanLinks: LogicalLink[] = links.map((l: any) => {
+          const { sourceAnchor, targetAnchor, showTagLabel, ...rest } = l;
+          return {
+            id: rest.id || uuidv4(),
+            type: rest.type || LinkType.CONSUMPTION,
+            sourceId: rest.sourceId,
+            targetId: rest.targetId,
+            sourceCardinality: rest.sourceCardinality,
+            targetCardinality: rest.targetCardinality,
+            tag: rest.tag
+          };
+        });
+
+        const cleanTags: TagDefinition[] = tags.map((t: any) => ({
+          id: t.id || t.name,
+          name: t.name || t.id
+        }));
+
+        const cleanLogical = {
+          elements: cleanElements,
+          links: cleanLinks,
+          tags: cleanTags
+        };
+
+        const hierarchy = analyzeModelHierarchy(cleanLogical);
+
+        setInfoModelPrompt({
+          isOpen: true,
+          logical: cleanLogical,
+          hierarchy,
+          fileName
+        });
+        return;
+      }
+    }
+
+    // B: MODEL WITH DIAGRAMS / VISUAL REPRESENTATIONS
+    // 1. Schema written by exportModel (logicalModel & diagrams)
+    if (imported.logicalModel && imported.diagrams) {
+      const logical = imported.logicalModel;
+      const opds = imported.diagrams.map((diag: any) => ({
+        id: diag.id,
+        name: diag.name,
+        parentProcessId: diag.parentProcessId,
+        visual: diag.visualRepresentation || diag.visual || { elements: [], links: [], tagStyles: [] }
+      }));
+      const currentOpdId = imported.currentOpdId || opds[0]?.id || '';
+      updateModel(normalizeOPMModel({
+        logical,
+        opds,
+        currentOpdId
+      }));
+      setToastMessage(`Imported model with ${opds.length} diagram${opds.length === 1 ? '' : 's'}.`);
+    }
+    // 2. Direct OPMModel format (logical & opds)
+    else if (imported.logical && imported.opds) {
+      const currentOpdId = imported.currentOpdId || imported.opds[0]?.id || '';
+      updateModel(normalizeOPMModel({
+        logical: imported.logical,
+        opds: imported.opds,
+        currentOpdId
+      }));
+      setToastMessage(`Imported model with ${imported.opds.length} diagram${imported.opds.length === 1 ? '' : 's'}.`);
+    }
+    // 3. Single-diagram representation with logical and visual
+    else if (imported.logical && imported.visual) {
+      const sdId = uuidv4();
+      updateModel(normalizeOPMModel({
+        logical: imported.logical,
+        opds: [{ id: sdId, name: 'SD', visual: imported.visual }],
+        currentOpdId: sdId
+      }));
+      setToastMessage("Imported diagram successfully.");
+    }
+    // 4. Legacy format (elements & links inline with visual variables)
+    else if (imported.elements && imported.links) {
+      const logical = {
+        elements: imported.elements.map((el: any) => {
+          const { x, y, width, height, isExpanded, ...rest } = el;
+          return { ...rest };
+        }),
+        links: imported.links.map((l: any) => {
+          const { sourceAnchor, targetAnchor, ...rest } = l;
+          return { ...rest };
+        })
+      };
+      const visual = {
+        elements: imported.elements.map((el: any) => ({
+          id: el.id,
+          x: el.x || 50,
+          y: el.y || 50,
+          width: el.width || 120,
+          height: el.height || 60,
+          parentId: el.parentId,
+          isExpanded: el.isExpanded
+        })),
+        links: imported.links.map((l: any) => ({
+          id: l.id,
+          sourceAnchor: l.sourceAnchor,
+          targetAnchor: l.targetAnchor
+        })),
+        tagStyles: []
+      };
+      const sdId = uuidv4();
+      updateModel(normalizeOPMModel({
+        logical,
+        opds: [{ id: sdId, name: 'SD', visual }],
+        currentOpdId: sdId
+      }));
+      setToastMessage("Imported legacy model successfully.");
+    } else {
+      setDialog({
+        isOpen: true,
+        title: "Import Failed",
+        message: "The selected file is not a valid OPM model schema.",
+        confirmLabel: "OK",
+        onConfirm: () => setDialog(prev => ({ ...prev, isOpen: false }))
+      });
+    }
+  };
+
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -748,83 +1222,7 @@ export default function App() {
     reader.onload = (event) => {
       try {
         const imported = JSON.parse(event.target?.result as string);
-        
-        // 1. Check if it's the schema written by exportModel (logicalModel & diagrams)
-        if (imported.logicalModel && imported.diagrams) {
-          const logical = imported.logicalModel;
-          const opds = imported.diagrams.map((diag: any) => ({
-            id: diag.id,
-            name: diag.name,
-            parentProcessId: diag.parentProcessId,
-            visual: diag.visualRepresentation || diag.visual || { elements: [], links: [] }
-          }));
-          const currentOpdId = imported.currentOpdId || opds[0]?.id || '';
-          updateModel({
-            logical,
-            opds,
-            currentOpdId
-          });
-        }
-        // 2. Check if it's direct OPMModel format
-        else if (imported.logical && imported.opds) {
-          updateModel({
-            logical: imported.logical,
-            opds: imported.opds,
-            currentOpdId: imported.currentOpdId || imported.opds[0]?.id || ''
-          });
-        }
-        // 3. Single-diagram representation with logical and visual
-        else if (imported.logical && imported.visual) {
-          const sdId = uuidv4();
-          updateModel({
-            logical: imported.logical,
-            opds: [{ id: sdId, name: 'SD', visual: imported.visual }],
-            currentOpdId: sdId
-          });
-        }
-        // 4. Legacy format (elements & links inline with visual variables)
-        else if (imported.elements && imported.links) {
-          const logical = {
-            elements: imported.elements.map((el: any) => {
-              const { x, y, width, height, isExpanded, ...rest } = el;
-              return { ...rest };
-            }),
-            links: imported.links.map((l: any) => {
-              const { sourceAnchor, targetAnchor, ...rest } = l;
-              return { ...rest };
-            })
-          };
-          const visual = {
-            elements: imported.elements.map((el: any) => ({
-              id: el.id,
-              x: el.x || 50,
-              y: el.y || 50,
-              width: el.width || 120,
-              height: el.height || 60,
-              parentId: el.parentId,
-              isExpanded: el.isExpanded
-            })),
-            links: imported.links.map((l: any) => ({
-              id: l.id,
-              sourceAnchor: l.sourceAnchor,
-              targetAnchor: l.targetAnchor
-            }))
-          };
-          const sdId = uuidv4();
-          updateModel({
-            logical,
-            opds: [{ id: sdId, name: 'SD', visual }],
-            currentOpdId: sdId
-          });
-        } else {
-          setDialog({
-            isOpen: true,
-            title: "Import Failed",
-            message: "The selected file is not a valid OPM model schema.",
-            confirmLabel: "OK",
-            onConfirm: () => setDialog(prev => ({ ...prev, isOpen: false }))
-          });
-        }
+        processImportData(imported, file.name);
       } catch (err) {
         setDialog({
           isOpen: true,
@@ -839,6 +1237,45 @@ export default function App() {
       }
     };
     reader.readAsText(file);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const imported = JSON.parse(event.target?.result as string);
+        processImportData(imported, file.name);
+      } catch (err) {
+        setDialog({
+          isOpen: true,
+          title: "Import Error",
+          message: "Failed to parse the dropped JSON file.",
+          confirmLabel: "OK",
+          onConfirm: () => setDialog(prev => ({ ...prev, isOpen: false }))
+        });
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const confirmGenerateDiagrams = () => {
+    if (!infoModelPrompt) return;
+    const { logical, hierarchy } = infoModelPrompt;
+    pushToHistory();
+    const synthesized = synthesizeDiagramsFromLogical(logical);
+    const newModel = normalizeOPMModel({
+      logical,
+      opds: synthesized.opds,
+      currentOpdId: synthesized.currentOpdId
+    });
+    setModel(newModel);
+    setSelectedId(null);
+    setSelectedLinkId(null);
+    setInfoModelPrompt(null);
+    setToastMessage(`Generated ${synthesized.opds.length} diagram${synthesized.opds.length === 1 ? '' : 's'} (Depth: ${hierarchy.maxDepth}) for OPM exploration.`);
   };
 
   const isValidLink = (sourceId: string, targetId: string, type: LinkType): boolean => {
@@ -874,6 +1311,8 @@ export default function App() {
         return (sourceIsObject && targetIsObject) || (sourceIsProcess && targetIsProcess);
       case LinkType.EXHIBITION:
         return (sourceIsObject || sourceIsProcess) && (targetIsObject || targetIsProcess);
+      case LinkType.TAGGED_STRUCTURAL:
+        return sourceIsObject && targetIsObject;
       case LinkType.INVOCATION:
         return sourceIsProcess && targetIsProcess;
       default:
@@ -904,6 +1343,47 @@ export default function App() {
             setTool('select');
             return;
           }
+        }
+
+        if (linkType === LinkType.TAGGED_STRUCTURAL) {
+          const sourceIsObject = source?.type === ElementType.OBJECT;
+          const targetIsObject = target?.type === ElementType.OBJECT;
+          if (!sourceIsObject || !targetIsObject) {
+            setDialog({
+              isOpen: true,
+              title: "Tagged Structural Link Constraint",
+              message: "Tagged structural links must connect two Objects (Object → Object). Please select an Object.",
+              confirmLabel: "Understood",
+              onConfirm: () => {
+                setDialog(prev => ({ ...prev, isOpen: false }));
+              }
+            });
+            setLinkingSource(null);
+            return;
+          }
+
+          if (linkingSource === id) {
+            setLinkingSource(null);
+            return;
+          }
+
+          const existingTags = model.logical.tags || [];
+          const initialTag = existingTags.length > 0 ? existingTags[0].name : 'supports';
+          setSelectedTagInput(initialTag);
+          const currentStyle = currentOpd.visual.tagStyles?.find(ts => ts.tag.toLowerCase() === initialTag.toLowerCase());
+          setNewTagColor(currentStyle?.color || '#2563eb');
+          setNewTagLineStyle(currentStyle?.lineStyle || 'solid');
+          setNewTagShowLabel(currentStyle?.showTagLabel !== undefined ? currentStyle.showTagLabel : true);
+
+          setTaggedLinkDialog({
+            isOpen: true,
+            sourceId: linkingSource,
+            targetId: id,
+            sourceName: source?.name || 'Object',
+            targetName: target?.name || 'Object'
+          });
+          setLinkingSource(null);
+          return;
         }
 
         if (linkingSource !== id && isValidLink(linkingSource, id, linkType)) {
@@ -1612,6 +2092,78 @@ export default function App() {
       );
     }
 
+    // Tagged Structural Links (user-defined tagged structural relations)
+    if (link.type === LinkType.TAGGED_STRUCTURAL) {
+      const tagStyle = currentOpd.visual.tagStyles?.find(ts => ts.tag.toLowerCase() === link.tag?.trim().toLowerCase());
+      const effectiveColor = isSelected ? '#4f46e5' : (tagStyle?.color || '#2563eb');
+      const effectiveWidth = isSelected ? 3 : 2;
+
+      let dashPattern: number[] | undefined = undefined;
+      const style = tagStyle?.lineStyle || 'solid';
+      if (style === 'dashed') dashPattern = [8, 6];
+      else if (style === 'dotted') dashPattern = [3, 4];
+      else if (style === 'dash-dot') dashPattern = [10, 4, 3, 4];
+
+      const taggedProps = {
+        ...commonProps,
+        stroke: effectiveColor,
+        strokeWidth: effectiveWidth,
+        dash: dashPattern,
+      };
+
+      const showLabel = visualLink.showTagLabel !== undefined 
+        ? visualLink.showTagLabel 
+        : (tagStyle ? tagStyle.showTagLabel !== false : true);
+      const tagText = link.tag?.trim() || '';
+      const midX = (fromX + toX) / 2;
+      const midY = (fromY + toY) / 2;
+      const badgeWidth = Math.max(52, tagText.length * 8 + 18);
+      const badgeHeight = 22;
+
+      return (
+        <Group key={link.id}>
+          <Arrow
+            points={[fromX, fromY, toX, toY]}
+            {...taggedProps}
+            fill={effectiveColor}
+            pointerLength={10}
+            pointerWidth={8}
+          />
+          {showLabel && tagText && (
+            <Group x={midX} y={midY} onClick={commonProps.onClick}>
+              <Rect
+                x={-badgeWidth / 2}
+                y={-badgeHeight / 2}
+                width={badgeWidth}
+                height={badgeHeight}
+                fill="#ffffff"
+                stroke={effectiveColor}
+                strokeWidth={1.5}
+                cornerRadius={6}
+                shadowColor="rgba(0, 0, 0, 0.12)"
+                shadowBlur={3}
+                shadowOffset={{ x: 0, y: 1 }}
+              />
+              <Text
+                x={-badgeWidth / 2}
+                y={-badgeHeight / 2}
+                width={badgeWidth}
+                height={badgeHeight}
+                text={tagText}
+                fontSize={11}
+                fontStyle="italic bold"
+                fill={effectiveColor}
+                align="center"
+                verticalAlign="middle"
+              />
+            </Group>
+          )}
+          {renderCardinality()}
+          {renderHandles()}
+        </Group>
+      );
+    }
+
     // Control Links (Condition, Event, Exception)
     if (link.type === LinkType.CONDITION || link.type === LinkType.EVENT || link.type === LinkType.EXCEPTION) {
       return (
@@ -1751,7 +2303,11 @@ export default function App() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-slate-50 overflow-hidden font-sans text-slate-900">
+    <div 
+      className="flex flex-col h-screen bg-slate-50 overflow-hidden font-sans text-slate-900"
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={handleDrop}
+    >
       <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0 z-10 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-indigo-200 shadow-lg">
@@ -1788,6 +2344,20 @@ export default function App() {
             </button>
           </div>
 
+          <button 
+            onClick={startTutorialIndex}
+            className="flex items-center gap-2 px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl transition-colors shadow-sm font-semibold text-sm border border-indigo-200"
+            title="Start Step-by-Step Interactive Tutorial"
+          >
+            <GraduationCap className="w-4 h-4 text-indigo-600" /> Tutorial
+          </button>
+          <button 
+            onClick={() => setIsManageTagsOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-xl hover:bg-slate-200 transition-colors shadow-sm font-medium text-sm border border-slate-200"
+            title="Manage and Rename Structural Relation Tags"
+          >
+            <Tag className="w-4 h-4 text-indigo-600" /> Tags
+          </button>
           <button 
             onClick={() => setIsExampleLibraryOpen(true)}
             className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-xl hover:bg-slate-200 transition-colors shadow-sm font-medium text-sm border border-slate-200"
@@ -1833,6 +2403,7 @@ export default function App() {
           <ToolButton id="tool-btn-EXHIBITION" active={tool === LinkType.EXHIBITION} onClick={() => setTool(LinkType.EXHIBITION)} icon={<svg viewBox="0 0 24 24" className="w-5 h-5 animate-none" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2 L2 20 H22 Z" fill="currentColor" /><path d="M12 7 L5.5 18 H18.5 Z" fill="white" /><text x="12" y="15.5" fill="currentColor" fontSize="9" fontWeight="900" fontFamily="sans-serif" textAnchor="middle">E</text></svg>} label="Exhibition" />
           <ToolButton id="tool-btn-GENERALIZATION" active={tool === LinkType.GENERALIZATION} onClick={() => setTool(LinkType.GENERALIZATION)} icon={<svg viewBox="0 0 24 24" className="w-5 h-5 animate-none" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3 L3 20 H21 Z" stroke="currentColor" strokeWidth="2.5" fill="white" /><text x="12" y="16" fill="currentColor" fontSize="12" fontWeight="900" fontFamily="sans-serif" textAnchor="middle">G</text></svg>} label="Generalization" />
           <ToolButton id="tool-btn-INSTANTIATION" active={tool === LinkType.INSTANTIATION} onClick={() => setTool(LinkType.INSTANTIATION)} icon={<svg viewBox="0 0 24 24" className="w-5 h-5 animate-none" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2 L2 20 H22 Z" fill="currentColor" /><circle cx="12" cy="14" r="5" fill="white" /><text x="12" y="17.2" fill="currentColor" fontSize="10" fontWeight="900" fontFamily="sans-serif" textAnchor="middle">I</text></svg>} label="Instantiation" />
+          <ToolButton id="tool-btn-TAGGED_STRUCTURAL" active={tool === LinkType.TAGGED_STRUCTURAL} onClick={() => setTool(LinkType.TAGGED_STRUCTURAL)} icon={<Tag className="w-5 h-5" />} label="Tagged Link" />
           <div className="w-10 h-px bg-slate-100 mx-auto" />
           <ToolButton active={isAddExistingOpen} onClick={() => setIsAddExistingOpen(true)} icon={<Plus className="w-5 h-5" />} label="Add Existing" />
           <div className="mt-auto pt-4 border-t border-slate-100 w-full flex flex-col items-center gap-4">
@@ -1899,14 +2470,20 @@ export default function App() {
           </Stage>
           {linkingSource && (
             <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-indigo-600 text-white px-6 py-3 rounded-2xl shadow-xl text-sm font-semibold animate-pulse flex items-center gap-3 border border-indigo-400 z-20">
-              <Plus className="w-4 h-4" /> {tool === LinkType.INVOCATION ? 'Select target Process to complete Invocation' : 'Select target element to complete link'}
+              <Plus className="w-4 h-4" /> {
+                tool === LinkType.TAGGED_STRUCTURAL ? 'Select target Object to complete Tagged Link' :
+                tool === LinkType.INVOCATION ? 'Select target Process to complete Invocation' : 
+                'Select target element to complete link'
+              }
             </div>
           )}
           {tool !== 'select' && !linkingSource && (
             <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-white text-indigo-600 px-6 py-3 rounded-2xl shadow-xl text-sm font-semibold flex items-center gap-3 border border-indigo-100 z-20">
               <div className="w-2 h-2 bg-indigo-600 rounded-full animate-ping" />
               {tool === ElementType.OBJECT || tool === ElementType.PROCESS ? `Click on canvas to place ${tool}` : 
-               tool === LinkType.INVOCATION ? 'Select source Process for Invocation' : 'Select source element for link'}
+               tool === LinkType.TAGGED_STRUCTURAL ? 'Select source Object for Tagged Link' :
+               tool === LinkType.INVOCATION ? 'Select source Process for Invocation' : 
+               'Select source element for link'}
             </div>
           )}
         </main>
@@ -2150,86 +2727,471 @@ export default function App() {
                 </div>
               </div>
             ) : selectedLinkId ? (
-              <div className="space-y-6">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">Link Type</label>
-                  <select 
-                    value={model.logical.links.find(l => l.id === selectedLinkId)?.type}
-                    onChange={(e) => {
-                      const val = e.target.value as LinkType;
-                      updateModel(prev => ({
-                        ...prev,
-                        logical: {
-                          ...prev.logical,
-                          links: prev.logical.links.map(l => l.id === selectedLinkId ? { ...l, type: val } : l)
-                        }
-                      }));
-                    }}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                  >
-                    <optgroup label="Structural">
-                      <option value={LinkType.AGGREGATION}>Aggregation</option>
-                      <option value={LinkType.EXHIBITION}>Exhibition</option>
-                      <option value={LinkType.GENERALIZATION}>Generalization</option>
-                      <option value={LinkType.INSTANTIATION}>Instantiation</option>
-                    </optgroup>
-                    <optgroup label="Procedural">
-                      <option value={LinkType.AGENT}>Agent</option>
-                      <option value={LinkType.INSTRUMENT}>Instrument</option>
-                      <option value={LinkType.CONSUMPTION}>Consumption</option>
-                      <option value={LinkType.RESULT}>Result</option>
-                      <option value={LinkType.EFFECT}>Effect</option>
-                      <option value={LinkType.CONDITION}>Condition</option>
-                      <option value={LinkType.EVENT}>Event</option>
-                      <option value={LinkType.EXCEPTION}>Exception</option>
-                      <option value={LinkType.INVOCATION}>Invocation</option>
-                    </optgroup>
-                  </select>
+              (() => {
+                const selectedLink = model.logical.links.find(l => l.id === selectedLinkId);
+                if (!selectedLink) return null;
+                const visualLink = currentOpd.visual.links.find(vl => vl.id === selectedLinkId);
+                const isTagged = selectedLink.type === LinkType.TAGGED_STRUCTURAL;
+                const currentTag = selectedLink.tag || 'supports';
+                const tagStyle = currentOpd.visual.tagStyles?.find(ts => ts.tag.toLowerCase() === currentTag.toLowerCase());
+                const effectiveColor = tagStyle?.color || '#2563eb';
+                const effectiveLineStyle = tagStyle?.lineStyle || 'solid';
+                const isTagLabelGloballyVisible = tagStyle ? tagStyle.showTagLabel !== false : true;
+                const isThisLinkTagVisible = visualLink?.showTagLabel !== undefined 
+                  ? visualLink.showTagLabel 
+                  : isTagLabelGloballyVisible;
+                
+                const availableTags = model.logical.tags || [];
+
+                return (
+                  <div className="space-y-6">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">Link Type</label>
+                      <select 
+                        value={selectedLink.type}
+                        onChange={(e) => {
+                          const val = e.target.value as LinkType;
+                          updateModel(prev => {
+                            let updatedTags = prev.logical.tags ? [...prev.logical.tags] : [];
+                            const defaultTag = updatedTags[0]?.name || 'supports';
+                            if (!updatedTags.some(t => t.name.toLowerCase() === defaultTag.toLowerCase())) {
+                              updatedTags.push({
+                                id: uuidv4(),
+                                name: defaultTag
+                              });
+                            }
+
+                            let updatedLinks = prev.logical.links.map(l => {
+                              if (l.id === selectedLinkId) {
+                                const newLink = { ...l, type: val };
+                                if (val === LinkType.TAGGED_STRUCTURAL && !newLink.tag) {
+                                  newLink.tag = defaultTag;
+                                }
+                                return newLink;
+                              }
+                              return l;
+                            });
+
+                            const updatedOpds = prev.opds.map(o => {
+                              if (o.id === prev.currentOpdId) {
+                                const styles = o.visual.tagStyles || [];
+                                if (!styles.some(ts => ts.tag.toLowerCase() === defaultTag.toLowerCase())) {
+                                  return {
+                                    ...o,
+                                    visual: {
+                                      ...o.visual,
+                                      tagStyles: [...styles, { tag: defaultTag, color: '#2563eb', lineStyle: 'solid' as TagLineStyle, showTagLabel: true }]
+                                    }
+                                  };
+                                }
+                              }
+                              return o;
+                            });
+
+                            return {
+                              ...prev,
+                              logical: {
+                                ...prev.logical,
+                                tags: updatedTags,
+                                links: updatedLinks
+                              },
+                              opds: updatedOpds
+                            };
+                          });
+                        }}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      >
+                        <optgroup label="Structural">
+                          <option value={LinkType.AGGREGATION}>Aggregation</option>
+                          <option value={LinkType.EXHIBITION}>Exhibition</option>
+                          <option value={LinkType.GENERALIZATION}>Generalization</option>
+                          <option value={LinkType.INSTANTIATION}>Instantiation</option>
+                          <option value={LinkType.TAGGED_STRUCTURAL}>Tagged Structural</option>
+                        </optgroup>
+                        <optgroup label="Procedural">
+                          <option value={LinkType.AGENT}>Agent</option>
+                          <option value={LinkType.INSTRUMENT}>Instrument</option>
+                          <option value={LinkType.CONSUMPTION}>Consumption</option>
+                          <option value={LinkType.RESULT}>Result</option>
+                          <option value={LinkType.EFFECT}>Effect</option>
+                          <option value={LinkType.CONDITION}>Condition</option>
+                          <option value={LinkType.EVENT}>Event</option>
+                          <option value={LinkType.EXCEPTION}>Exception</option>
+                          <option value={LinkType.INVOCATION}>Invocation</option>
+                        </optgroup>
+                      </select>
+                    </div>
+
+                    {isTagged && (
+                      <div className="space-y-4 pt-2 border-t border-slate-100">
+                        {(() => {
+                          const matchingRelations = model.logical.links.filter(
+                            l => l.type === LinkType.TAGGED_STRUCTURAL && l.tag?.trim().toLowerCase() === currentTag.toLowerCase()
+                          );
+                          const matchingCount = matchingRelations.length;
+
+                          return (
+                            <>
+                              <div>
+                                <div className="flex items-center justify-between mb-2">
+                                  <label className="block text-xs font-semibold text-slate-500 uppercase">Tag Name (Relation)</label>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setRenameInputVal(currentTag);
+                                      setRenameTagModal({ isOpen: true, oldTag: currentTag });
+                                    }}
+                                    className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 hover:underline cursor-pointer transition-colors"
+                                    title={`Rename '${currentTag}' across all relations in the model`}
+                                  >
+                                    <Edit3 className="w-3 h-3" />
+                                    <span>Rename for all ({matchingCount})</span>
+                                  </button>
+                                </div>
+                                <input 
+                                  type="text"
+                                  value={selectedLink.tag || ''}
+                                  onFocus={pushToHistory}
+                                  onChange={(e) => {
+                                    const newTag = e.target.value;
+                                    updateModel(prev => {
+                                      const existingTags = prev.logical.tags || [];
+                                      let updatedTags = existingTags;
+                                      if (newTag.trim() && !existingTags.some(t => t.name.toLowerCase() === newTag.trim().toLowerCase())) {
+                                        updatedTags = [...existingTags, { id: uuidv4(), name: newTag.trim() }];
+                                      }
+                                      return {
+                                        ...prev,
+                                        logical: {
+                                          ...prev.logical,
+                                          tags: updatedTags,
+                                          links: prev.logical.links.map(l => l.id === selectedLinkId ? { ...l, tag: newTag } : l)
+                                        }
+                                      };
+                                    });
+                                  }}
+                                  placeholder="e.g. supports, contains"
+                                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                />
+                                {matchingCount > 1 && (
+                                  <div className="mt-2 p-2.5 bg-indigo-50/70 border border-indigo-200/80 rounded-xl flex items-center justify-between gap-2">
+                                    <span className="text-[11px] text-slate-600">
+                                      <span className="font-semibold text-indigo-900">{matchingCount} relations</span> share tag <span className="font-semibold text-indigo-700">'{currentTag}'</span>
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setRenameInputVal(currentTag);
+                                        setRenameTagModal({ isOpen: true, oldTag: currentTag });
+                                      }}
+                                      className="px-2 py-1 bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 font-semibold rounded-lg text-[11px] transition-colors shrink-0 flex items-center gap-1 shadow-2xs cursor-pointer"
+                                      title="Rename all relations with this tag"
+                                    >
+                                      <Edit3 className="w-3 h-3" />
+                                      Rename All
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Reusable Tags list */}
+                              {availableTags.length > 0 && (
+                                <div>
+                                  <div className="flex items-center justify-between mb-2">
+                                    <span className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Reuse Existing Tag</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => setIsManageTagsOpen(true)}
+                                      className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 hover:underline cursor-pointer"
+                                      title="Manage all tags in model"
+                                    >
+                                      <Tag className="w-3 h-3" />
+                                      <span>Manage Tags</span>
+                                    </button>
+                                  </div>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {availableTags.map(t => {
+                                      const isCurrent = t.name.toLowerCase() === currentTag.toLowerCase();
+                                      const currentTagStyle = currentOpd.visual.tagStyles?.find(ts => ts.tag.toLowerCase() === t.name.toLowerCase());
+                                      return (
+                                        <div key={t.id} className="inline-flex items-center">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              updateModel(prev => ({
+                                                ...prev,
+                                                logical: {
+                                                  ...prev.logical,
+                                                  links: prev.logical.links.map(l => l.id === selectedLinkId ? { ...l, tag: t.name } : l)
+                                                }
+                                              }));
+                                            }}
+                                            className={`px-2.5 py-1 rounded-l-lg text-xs font-semibold flex items-center gap-1.5 transition-all border border-r-0 ${
+                                              isCurrent 
+                                                ? 'bg-indigo-50 border-indigo-300 text-indigo-700 shadow-xs' 
+                                                : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                                            }`}
+                                          >
+                                            <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: currentTagStyle?.color || '#2563eb' }} />
+                                            <span>{t.name}</span>
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setRenameInputVal(t.name);
+                                              setRenameTagModal({ isOpen: true, oldTag: t.name });
+                                            }}
+                                            title={`Rename tag '${t.name}' across all relations`}
+                                            className={`px-1.5 py-1 rounded-r-lg text-xs font-semibold transition-all border border-l-slate-200/50 ${
+                                              isCurrent
+                                                ? 'bg-indigo-50 border-indigo-300 text-indigo-700 hover:bg-indigo-100'
+                                                : 'bg-white border-slate-200 text-slate-400 hover:text-indigo-600 hover:bg-slate-50'
+                                            }`}
+                                          >
+                                            <Edit3 className="w-2.5 h-2.5" />
+                                          </button>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Visual Representation for all links with this tag */}
+                              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200/80 space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-bold text-slate-700">Tag Style ({currentTag})</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setRenameInputVal(currentTag);
+                                      setRenameTagModal({ isOpen: true, oldTag: currentTag });
+                                    }}
+                                    className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 hover:underline cursor-pointer"
+                                  >
+                                    <Edit3 className="w-3 h-3" />
+                                    <span>Rename Tag</span>
+                                  </button>
+                                </div>
+
+                          {/* Live preview banner */}
+                          <div className="h-10 bg-white rounded-lg border border-slate-200 flex items-center justify-center relative px-4 overflow-hidden">
+                            <svg className="w-full h-8" viewBox="0 0 200 32">
+                              <line 
+                                x1="20" y1="16" x2="175" y2="16" 
+                                stroke={effectiveColor} 
+                                strokeWidth="2" 
+                                strokeDasharray={
+                                  effectiveLineStyle === 'dashed' ? '6,4' :
+                                  effectiveLineStyle === 'dotted' ? '2,3' :
+                                  effectiveLineStyle === 'dash-dot' ? '8,3,2,3' : undefined
+                                }
+                              />
+                              <polygon points="175,12 185,16 175,20" fill={effectiveColor} />
+                              {isTagLabelGloballyVisible && currentTag && (
+                                <g transform="translate(100, 16)">
+                                  <rect 
+                                    x={-(Math.max(48, currentTag.length * 7 + 16)) / 2} 
+                                    y="-10" 
+                                    width={Math.max(48, currentTag.length * 7 + 16)} 
+                                    height="20" 
+                                    rx="5" 
+                                    fill="white" 
+                                    stroke={effectiveColor} 
+                                    strokeWidth="1.5" 
+                                  />
+                                  <text 
+                                    x="0" 
+                                    y="3.5" 
+                                    fill={effectiveColor} 
+                                    fontSize="10" 
+                                    fontWeight="bold" 
+                                    fontStyle="italic" 
+                                    textAnchor="middle"
+                                  >
+                                    {currentTag}
+                                  </text>
+                                </g>
+                              )}
+                            </svg>
+                          </div>
+
+                          {/* Color swatches */}
+                          <div>
+                            <span className="block text-[11px] font-semibold text-slate-500 mb-1.5">Color</span>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {[
+                                { name: 'Blue', hex: '#2563eb' },
+                                { name: 'Indigo', hex: '#4f46e5' },
+                                { name: 'Cyan', hex: '#0891b2' },
+                                { name: 'Emerald', hex: '#059669' },
+                                { name: 'Amber', hex: '#d97706' },
+                                { name: 'Rose', hex: '#e11d48' },
+                                { name: 'Purple', hex: '#9333ea' },
+                                { name: 'Slate', hex: '#475569' },
+                              ].map(c => (
+                                <button
+                                  key={c.hex}
+                                  type="button"
+                                  onClick={() => updateTagVisual(currentTag, { color: c.hex })}
+                                  className={`w-6 h-6 rounded-full border-2 transition-transform ${
+                                    effectiveColor.toLowerCase() === c.hex.toLowerCase() 
+                                      ? 'border-slate-800 scale-110 shadow-xs' 
+                                      : 'border-white hover:scale-105'
+                                  }`}
+                                  style={{ backgroundColor: c.hex }}
+                                  title={c.name}
+                                />
+                              ))}
+                              <input 
+                                type="color" 
+                                value={effectiveColor}
+                                onChange={(e) => updateTagVisual(currentTag, { color: e.target.value })}
+                                className="w-6 h-6 p-0 border border-slate-200 rounded cursor-pointer bg-transparent"
+                                title="Custom Color"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Line Style Selector */}
+                          <div>
+                            <span className="block text-[11px] font-semibold text-slate-500 mb-1.5">Line Pattern</span>
+                            <div className="grid grid-cols-4 gap-1 bg-white p-1 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600">
+                              {(['solid', 'dashed', 'dotted', 'dash-dot'] as TagLineStyle[]).map(style => (
+                                <button
+                                  key={style}
+                                  type="button"
+                                  onClick={() => updateTagVisual(currentTag, { lineStyle: style })}
+                                  className={`py-1 rounded text-center capitalize transition-all ${
+                                    effectiveLineStyle === style 
+                                      ? 'bg-indigo-600 text-white shadow-xs' 
+                                      : 'hover:bg-slate-50 text-slate-600'
+                                  }`}
+                                >
+                                  {style === 'dash-dot' ? 'Dash-Dot' : style}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Global Tag Visibility Toggle */}
+                          <label className="flex items-center justify-between p-2 bg-white rounded-lg border border-slate-200 cursor-pointer hover:bg-slate-50 transition-colors">
+                            <span className="text-xs font-semibold text-slate-700">Show label for all '{currentTag}' links</span>
+                            <input 
+                              type="checkbox"
+                              checked={isTagLabelGloballyVisible}
+                              onChange={(e) => setAllLinksTagVisibility(currentTag, e.target.checked)}
+                              className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
+                            />
+                          </label>
+                        </div>
+
+                        {/* Individual Link Visibility Toggle */}
+                        <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-2">
+                          <label className="flex items-center justify-between cursor-pointer">
+                            <div>
+                              <span className="text-xs font-semibold text-slate-800 block">This Link's Label</span>
+                              <span className="text-[11px] text-slate-400">Convey '{currentTag}' on canvas</span>
+                            </div>
+                            <input 
+                              type="checkbox"
+                              checked={isThisLinkTagVisible}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                updateModel(prev => ({
+                                  ...prev,
+                                  opds: prev.opds.map(o => o.id === prev.currentOpdId ? {
+                                    ...o,
+                                    visual: {
+                                      ...o.visual,
+                                      links: o.visual.links.map(vl => vl.id === selectedLinkId ? { ...vl, showTagLabel: checked } : vl)
+                                    }
+                                  } : o)
+                                }));
+                              }}
+                              className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
+                            />
+                          </label>
+                          {visualLink?.showTagLabel !== undefined && visualLink.showTagLabel !== isTagLabelGloballyVisible && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                updateModel(prev => ({
+                                  ...prev,
+                                  opds: prev.opds.map(o => o.id === prev.currentOpdId ? {
+                                    ...o,
+                                    visual: {
+                                      ...o.visual,
+                                      links: o.visual.links.map(vl => {
+                                        if (vl.id === selectedLinkId) {
+                                          const { showTagLabel: _, ...rest } = vl;
+                                          return rest;
+                                        }
+                                        return vl;
+                                      })
+                                    }
+                                  } : o)
+                                }));
+                              }}
+                              className="text-[11px] text-indigo-600 hover:underline font-medium"
+                            >
+                              Reset to tag's global visibility ({isTagLabelGloballyVisible ? 'visible' : 'hidden'})
+                            </button>
+                          )}
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">Source Cardinality</label>
-                  <input 
-                    type="text" 
-                    value={model.logical.links.find(l => l.id === selectedLinkId)?.sourceCardinality || ''}
-                    onFocus={pushToHistory}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setModel(prev => ({
-                        ...prev,
-                        logical: {
-                          ...prev.logical,
-                          links: prev.logical.links.map(l => l.id === selectedLinkId ? { ...l, sourceCardinality: val } : l)
-                        }
-                      }));
-                    }}
-                    placeholder="e.g. 1, 0..*, n"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">Target Cardinality</label>
-                  <input 
-                    type="text" 
-                    value={model.logical.links.find(l => l.id === selectedLinkId)?.targetCardinality || ''}
-                    onFocus={pushToHistory}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setModel(prev => ({
-                        ...prev,
-                        logical: {
-                          ...prev.logical,
-                          links: prev.logical.links.map(l => l.id === selectedLinkId ? { ...l, targetCardinality: val } : l)
-                        }
-                      }));
-                    }}
-                    placeholder="e.g. 1, 0..*, n"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                  />
-                </div>
-                <button onClick={deleteSelected} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 transition-colors text-xs font-bold border border-red-200">
-                  <Trash2 className="w-3.5 h-3.5" /> Delete Link
-                </button>
-              </div>
+              )}
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">Source Cardinality</label>
+                      <input 
+                        type="text" 
+                        value={selectedLink.sourceCardinality || ''}
+                        onFocus={pushToHistory}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setModel(prev => ({
+                            ...prev,
+                            logical: {
+                              ...prev.logical,
+                              links: prev.logical.links.map(l => l.id === selectedLinkId ? { ...l, sourceCardinality: val } : l)
+                            }
+                          }));
+                        }}
+                        placeholder="e.g. 1, 0..*, n"
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">Target Cardinality</label>
+                      <input 
+                        type="text" 
+                        value={selectedLink.targetCardinality || ''}
+                        onFocus={pushToHistory}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setModel(prev => ({
+                            ...prev,
+                            logical: {
+                              ...prev.logical,
+                              links: prev.logical.links.map(l => l.id === selectedLinkId ? { ...l, targetCardinality: val } : l)
+                            }
+                          }));
+                        }}
+                        placeholder="e.g. 1, 0..*, n"
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      />
+                    </div>
+                    <button onClick={deleteSelected} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 transition-colors text-xs font-bold border border-red-200">
+                      <Trash2 className="w-3.5 h-3.5" /> Delete Link
+                    </button>
+                  </div>
+                );
+              })()
             ) : (
               <div className="flex flex-col items-center justify-center py-12 text-slate-400 text-center px-6">
                 <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mb-4">
@@ -2310,7 +3272,7 @@ export default function App() {
                 <button
                   key={idx}
                   onClick={() => {
-                    updateModel(example.model);
+                    updateModel(normalizeOPMModel(example.model));
                     setIsExampleLibraryOpen(false);
                   }}
                   className="flex flex-col text-left p-5 rounded-2xl border border-slate-100 hover:border-indigo-200 hover:bg-indigo-50/30 transition-all group"
@@ -2440,7 +3402,9 @@ export default function App() {
                           )}
                         >
                           <div className="flex items-center justify-between mb-1">
-                            <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded uppercase">{l.type}</span>
+                            <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded uppercase">
+                              {l.type === LinkType.TAGGED_STRUCTURAL ? (l.tag ? `TAGGED: ${l.tag}` : 'TAGGED LINK') : l.type}
+                            </span>
                             {isSelected && <div className="w-4 h-4 bg-indigo-600 rounded-full flex items-center justify-center"><Check className="w-2.5 h-2.5 text-white" /></div>}
                           </div>
                           <div className="text-sm text-slate-600">
@@ -2484,6 +3448,254 @@ export default function App() {
         </div>
       )}
 
+      {taggedLinkDialog && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[2000] p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200 animate-in fade-in zoom-in duration-200">
+            <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center text-indigo-600">
+                  <Tag className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">Create Tagged Structural Link</h2>
+                  <p className="text-xs text-slate-500">
+                    Connect <span className="font-semibold text-slate-800">{taggedLinkDialog.sourceName}</span> to <span className="font-semibold text-slate-800">{taggedLinkDialog.targetName}</span>
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setTaggedLinkDialog(null)}
+                className="p-2 hover:bg-slate-200 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto">
+              {/* Tag Name Input */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1.5">Tag Name (Relation)</label>
+                <input
+                  type="text"
+                  value={selectedTagInput}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setSelectedTagInput(val);
+                    const tagStyle = currentOpd.visual.tagStyles?.find(ts => ts.tag.toLowerCase() === val.trim().toLowerCase());
+                    if (tagStyle) {
+                      setNewTagColor(tagStyle.color || '#2563eb');
+                      setNewTagLineStyle(tagStyle.lineStyle || 'solid');
+                      setNewTagShowLabel(tagStyle.showTagLabel !== false);
+                    }
+                  }}
+                  placeholder="e.g. supports, contains, manages"
+                  autoFocus
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                />
+              </div>
+
+              {/* Reusable Tags */}
+              {(model.logical.tags && model.logical.tags.length > 0) && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Or Select Existing Tag</label>
+                    <button
+                      type="button"
+                      onClick={() => setIsManageTagsOpen(true)}
+                      className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 hover:underline cursor-pointer"
+                    >
+                      <Tag className="w-3 h-3" />
+                      <span>Manage Tags</span>
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {model.logical.tags.map(t => {
+                      const isSelected = selectedTagInput.trim().toLowerCase() === t.name.toLowerCase();
+                      const tagStyle = currentOpd.visual.tagStyles?.find(ts => ts.tag.toLowerCase() === t.name.toLowerCase());
+                      return (
+                        <div key={t.id} className="inline-flex items-center">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedTagInput(t.name);
+                              setNewTagColor(tagStyle?.color || '#2563eb');
+                              setNewTagLineStyle(tagStyle?.lineStyle || 'solid');
+                              setNewTagShowLabel(tagStyle?.showTagLabel !== false);
+                            }}
+                            className={`px-3 py-1.5 rounded-l-xl text-xs font-semibold flex items-center gap-2 transition-all border border-r-0 ${
+                              isSelected 
+                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' 
+                                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            <span 
+                              className="w-2 h-2 rounded-full shrink-0" 
+                              style={{ backgroundColor: isSelected ? '#ffffff' : (tagStyle?.color || '#2563eb') }} 
+                            />
+                            <span>{t.name}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setRenameInputVal(t.name);
+                              setRenameTagModal({ isOpen: true, oldTag: t.name });
+                            }}
+                            title={`Rename tag '${t.name}' across all relations`}
+                            className={`px-2 py-1.5 rounded-r-xl text-xs font-semibold transition-all border border-l-slate-200/50 ${
+                              isSelected
+                                ? 'bg-indigo-700 border-indigo-600 text-white hover:bg-indigo-800'
+                                : 'bg-white border-slate-200 text-slate-400 hover:text-indigo-600 hover:bg-slate-50'
+                            }`}
+                          >
+                            <Edit3 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Visual preview */}
+              <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-3">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-slate-700">Link Visual Appearance</span>
+                  <span className="text-slate-400 text-[11px]">All '{selectedTagInput.trim() || 'tag'}' links will share this style</span>
+                </div>
+
+                <div className="h-12 bg-white rounded-xl border border-slate-200 flex items-center justify-center px-6">
+                  <svg className="w-full h-8" viewBox="0 0 240 32">
+                    <line 
+                      x1="20" y1="16" x2="215" y2="16" 
+                      stroke={newTagColor} 
+                      strokeWidth="2" 
+                      strokeDasharray={
+                        newTagLineStyle === 'dashed' ? '6,4' :
+                        newTagLineStyle === 'dotted' ? '2,3' :
+                        newTagLineStyle === 'dash-dot' ? '8,3,2,3' : undefined
+                      }
+                    />
+                    <polygon points="215,12 225,16 215,20" fill={newTagColor} />
+                    {newTagShowLabel && (
+                      <g transform="translate(120, 16)">
+                        <rect 
+                          x={-(Math.max(50, (selectedTagInput || 'tag').length * 7 + 16)) / 2} 
+                          y="-10" 
+                          width={Math.max(50, (selectedTagInput || 'tag').length * 7 + 16)} 
+                          height="20" 
+                          rx="5" 
+                          fill="white" 
+                          stroke={newTagColor} 
+                          strokeWidth="1.5" 
+                        />
+                        <text 
+                          x="0" 
+                          y="3.5" 
+                          fill={newTagColor} 
+                          fontSize="10" 
+                          fontWeight="bold" 
+                          fontStyle="italic" 
+                          textAnchor="middle"
+                        >
+                          {selectedTagInput || 'tag'}
+                        </text>
+                      </g>
+                    )}
+                  </svg>
+                </div>
+
+                {/* Color swatches */}
+                <div>
+                  <span className="block text-[11px] font-semibold text-slate-500 mb-1.5">Color</span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {[
+                      { name: 'Blue', hex: '#2563eb' },
+                      { name: 'Indigo', hex: '#4f46e5' },
+                      { name: 'Cyan', hex: '#0891b2' },
+                      { name: 'Emerald', hex: '#059669' },
+                      { name: 'Amber', hex: '#d97706' },
+                      { name: 'Rose', hex: '#e11d48' },
+                      { name: 'Purple', hex: '#9333ea' },
+                      { name: 'Slate', hex: '#475569' },
+                    ].map(c => (
+                      <button
+                        key={c.hex}
+                        type="button"
+                        onClick={() => setNewTagColor(c.hex)}
+                        className={`w-6 h-6 rounded-full border-2 transition-transform ${
+                          newTagColor.toLowerCase() === c.hex.toLowerCase() 
+                            ? 'border-slate-800 scale-110 shadow-xs' 
+                            : 'border-white hover:scale-105'
+                        }`}
+                        style={{ backgroundColor: c.hex }}
+                        title={c.name}
+                      />
+                    ))}
+                    <input 
+                      type="color" 
+                      value={newTagColor}
+                      onChange={(e) => setNewTagColor(e.target.value)}
+                      className="w-6 h-6 p-0 border border-slate-200 rounded cursor-pointer bg-transparent"
+                      title="Custom Color"
+                    />
+                  </div>
+                </div>
+
+                {/* Line Style */}
+                <div>
+                  <span className="block text-[11px] font-semibold text-slate-500 mb-1.5">Line Pattern</span>
+                  <div className="grid grid-cols-4 gap-1.5 bg-white p-1 rounded-xl border border-slate-200 text-xs font-semibold">
+                    {(['solid', 'dashed', 'dotted', 'dash-dot'] as TagLineStyle[]).map(style => (
+                      <button
+                        key={style}
+                        type="button"
+                        onClick={() => setNewTagLineStyle(style)}
+                        className={`py-1.5 rounded-lg text-center capitalize transition-all ${
+                          newTagLineStyle === style 
+                            ? 'bg-indigo-600 text-white shadow-xs' 
+                            : 'hover:bg-slate-50 text-slate-600'
+                        }`}
+                      >
+                        {style === 'dash-dot' ? 'Dash-Dot' : style}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Show Label Checkbox */}
+                <label className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-50 transition-colors">
+                  <span className="text-xs font-semibold text-slate-700">Display tag badge on link in diagram</span>
+                  <input
+                    type="checkbox"
+                    checked={newTagShowLabel}
+                    onChange={(e) => setNewTagShowLabel(e.target.checked)}
+                    className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setTaggedLinkDialog(null)}
+                className="flex-1 py-3 px-4 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition-all text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleConfirmTaggedLink(selectedTagInput, newTagColor, newTagLineStyle, newTagShowLabel)}
+                className="flex-1 py-3 px-4 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 text-sm"
+              >
+                Create Tagged Link
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {dialog.isOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[2000] p-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 animate-in fade-in zoom-in duration-200">
@@ -2516,6 +3728,367 @@ export default function App() {
                 className="w-full py-3 px-4 bg-transparent hover:bg-slate-200 text-slate-500 font-bold rounded-xl transition-all"
               >
                 {dialog.cancelLabel || 'Cancel'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-[3000] bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-xl border border-slate-700 flex items-center gap-3 animate-in fade-in slide-in-from-bottom-4 duration-200">
+          <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+            <Check className="w-3.5 h-3.5" />
+          </div>
+          <span className="text-xs font-semibold">{toastMessage}</span>
+          <button 
+            onClick={() => setToastMessage(null)}
+            className="text-slate-400 hover:text-white ml-2 p-1 rounded-lg hover:bg-slate-800"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Rename Tag Across Model Dialog */}
+      {renameTagModal && renameTagModal.isOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[2500] p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 animate-in fade-in zoom-in duration-200">
+            <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center">
+                  <Edit3 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">Rename Tag for All Relations</h2>
+                  <p className="text-xs text-slate-500">
+                    Update all relations tagged <span className="font-semibold text-indigo-600">'{renameTagModal.oldTag}'</span>
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setRenameTagModal(null)}
+                className="p-2 hover:bg-slate-200 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {(() => {
+                const relationsWithTag = model.logical.links.filter(
+                  l => l.type === LinkType.TAGGED_STRUCTURAL && l.tag?.trim().toLowerCase() === renameTagModal.oldTag.trim().toLowerCase()
+                );
+                const count = relationsWithTag.length;
+
+                return (
+                  <>
+                    <div className="p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl text-xs text-slate-600 space-y-1">
+                      <div className="font-semibold text-indigo-900 flex items-center gap-1.5">
+                        <Tag className="w-3.5 h-3.5 text-indigo-600" />
+                        Affects {count} structural relation{count === 1 ? '' : 's'} in the model:
+                      </div>
+                      {count > 0 ? (
+                        <div className="max-h-24 overflow-y-auto space-y-1 pt-1">
+                          {relationsWithTag.map((l, idx) => {
+                            const src = model.logical.elements.find(e => e.id === l.sourceId)?.name || 'Source';
+                            const tgt = model.logical.elements.find(e => e.id === l.targetId)?.name || 'Target';
+                            return (
+                              <div key={l.id || idx} className="text-[11px] text-slate-700 flex items-center gap-1.5">
+                                <span className="font-medium text-slate-900">{src}</span>
+                                <ArrowRight className="w-3 h-3 text-slate-400 shrink-0" />
+                                <span className="font-medium text-slate-900">{tgt}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-slate-500">No active links currently use this tag, but the tag definition will be renamed.</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 uppercase mb-1.5">New Tag Name</label>
+                      <input 
+                        type="text"
+                        value={renameInputVal}
+                        onChange={(e) => setRenameInputVal(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && renameInputVal.trim() && renameInputVal.trim().toLowerCase() !== renameTagModal.oldTag.trim().toLowerCase()) {
+                            renameTagGlobally(renameTagModal.oldTag, renameInputVal.trim());
+                          }
+                        }}
+                        autoFocus
+                        placeholder="e.g. enables, contains, manages"
+                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      />
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+
+            <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex gap-3">
+              <button 
+                onClick={() => setRenameTagModal(null)}
+                className="flex-1 py-3 px-4 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition-all text-sm"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={() => {
+                  if (renameInputVal.trim()) {
+                    renameTagGlobally(renameTagModal.oldTag, renameInputVal.trim());
+                  }
+                }}
+                disabled={!renameInputVal.trim() || renameInputVal.trim().toLowerCase() === renameTagModal.oldTag.trim().toLowerCase()}
+                className="flex-1 py-3 px-4 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 disabled:opacity-50 disabled:shadow-none text-sm"
+              >
+                Rename All
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Manage Tags Modal */}
+      {isManageTagsOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[2400] p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200 animate-in fade-in zoom-in duration-200 flex flex-col max-h-[85vh]">
+            <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center">
+                  <Tag className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">Manage Structural Tags</h2>
+                  <p className="text-xs text-slate-500">
+                    Rename or manage custom relation tags across your model
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsManageTagsOpen(false)}
+                className="p-2 hover:bg-slate-200 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto space-y-3 flex-1">
+              {(() => {
+                // Collect unique tags from logical.tags and any links with tags
+                const tagNamesSet = new Set<string>();
+                (model.logical.tags || []).forEach(t => tagNamesSet.add(t.name));
+                model.logical.links.forEach(l => {
+                  if (l.type === LinkType.TAGGED_STRUCTURAL && l.tag?.trim()) {
+                    tagNamesSet.add(l.tag.trim());
+                  }
+                });
+
+                const allUniqueTags = Array.from(tagNamesSet);
+
+                if (allUniqueTags.length === 0) {
+                  return (
+                    <div className="text-center py-12 text-slate-400">
+                      <Tag className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                      <p className="text-sm font-medium">No custom tags created yet</p>
+                      <p className="text-xs text-slate-400 mt-1">Create a Tagged Structural Link between elements to define tags.</p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="space-y-2">
+                    {allUniqueTags.map(tagName => {
+                      const count = model.logical.links.filter(
+                        l => l.type === LinkType.TAGGED_STRUCTURAL && l.tag?.trim().toLowerCase() === tagName.toLowerCase()
+                      ).length;
+                      const style = currentOpd.visual.tagStyles?.find(ts => ts.tag.toLowerCase() === tagName.toLowerCase());
+                      const color = style?.color || '#2563eb';
+
+                      return (
+                        <div 
+                          key={tagName} 
+                          className="flex items-center justify-between p-3.5 rounded-2xl border border-slate-200 hover:border-indigo-200 bg-white hover:bg-indigo-50/20 transition-all"
+                        >
+                          <div className="flex items-center gap-3">
+                            <span 
+                              className="w-3.5 h-3.5 rounded-full shrink-0 shadow-xs" 
+                              style={{ backgroundColor: color }} 
+                            />
+                            <div>
+                              <div className="text-sm font-bold text-slate-900">{tagName}</div>
+                              <div className="text-xs text-slate-500">
+                                {count} relation{count === 1 ? '' : 's'} using this tag
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRenameInputVal(tagName);
+                                setRenameTagModal({ isOpen: true, oldTag: tagName });
+                              }}
+                              className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                              title={`Rename tag '${tagName}' across all relations`}
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                              <span>Rename</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                deleteTagGlobally(tagName);
+                              }}
+                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                              title={`Delete tag '${tagName}'`}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+
+            <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex justify-end">
+              <button 
+                onClick={() => setIsManageTagsOpen(false)}
+                className="py-2 px-5 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 transition-all text-xs cursor-pointer"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Information Model Prompt Modal */}
+      {infoModelPrompt && infoModelPrompt.isOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-[2600] p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-xl overflow-hidden border border-slate-200 animate-in fade-in zoom-in duration-200 flex flex-col max-h-[90vh]">
+            <div className="p-6 border-b border-slate-100 bg-gradient-to-r from-indigo-50/70 via-slate-50 to-white flex items-center justify-between">
+              <div className="flex items-center gap-3.5">
+                <div className="w-11 h-11 bg-indigo-600 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-200">
+                  <Sparkles className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-lg font-bold text-slate-900">Information Model Detected</h2>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                      No Diagrams Included
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {infoModelPrompt.fileName ? `File: ${infoModelPrompt.fileName} • ` : ''}Generating visual representation from ontology
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setInfoModelPrompt(null)}
+                className="p-2 hover:bg-slate-200/70 rounded-full transition-colors cursor-pointer"
+                title="Cancel Import"
+              >
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto space-y-5 flex-1">
+              <div className="p-4 bg-indigo-50/70 border border-indigo-100 rounded-2xl text-xs text-slate-700 leading-relaxed space-y-2">
+                <div className="font-semibold text-indigo-900 flex items-center gap-2 text-sm">
+                  <Layers className="w-4 h-4 text-indigo-600" />
+                  Automatic OPM Diagram & OPL Synthesis
+                </div>
+                <p>
+                  This file contains an information model defining system ontology (elements and relations) without visual diagram representations. 
+                  The application will automatically synthesize <strong>{infoModelPrompt.hierarchy.plannedDiagrams.length} diagram{infoModelPrompt.hierarchy.plannedDiagrams.length === 1 ? '' : 's'}</strong> based on the model's structural hierarchy and depth, allowing you to explore the system both diagrammatically (OPDs) and textually (OPLs).
+                </p>
+              </div>
+
+              {/* Model Metrics Overview */}
+              <div>
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Model Information & Depth</h3>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
+                    <div className="text-[11px] font-semibold text-slate-500">Elements</div>
+                    <div className="text-xl font-bold text-slate-900 mt-0.5">{infoModelPrompt.hierarchy.totalElements}</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">
+                      {infoModelPrompt.hierarchy.objectCount} obj • {infoModelPrompt.hierarchy.processCount} proc • {infoModelPrompt.hierarchy.stateCount} states
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
+                    <div className="text-[11px] font-semibold text-slate-500">Relations</div>
+                    <div className="text-xl font-bold text-slate-900 mt-0.5">{infoModelPrompt.hierarchy.linkCount}</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">
+                      Procedural & structural links
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
+                    <div className="text-[11px] font-semibold text-slate-500">Hierarchy Depth</div>
+                    <div className="text-xl font-bold text-indigo-600 mt-0.5">
+                      {infoModelPrompt.hierarchy.maxDepth === 0 ? 'Depth 0' : `Depth ${infoModelPrompt.hierarchy.maxDepth}`}
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">
+                      {infoModelPrompt.hierarchy.decomposedProcesses.length === 0 
+                        ? 'Single-level (SD)' 
+                        : `${infoModelPrompt.hierarchy.decomposedProcesses.length} in-zoomed process${infoModelPrompt.hierarchy.decomposedProcesses.length === 1 ? '' : 'es'}`}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Planned Diagrams to Synthesize */}
+              <div>
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                  Diagrams to be Generated ({infoModelPrompt.hierarchy.plannedDiagrams.length})
+                </h3>
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {infoModelPrompt.hierarchy.plannedDiagrams.map((diag, idx) => (
+                    <div 
+                      key={idx} 
+                      className="p-3 bg-white border border-slate-200 rounded-xl flex items-center justify-between shadow-xs hover:border-indigo-200 transition-colors"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span className="w-6 h-6 rounded-lg bg-indigo-100 text-indigo-700 text-xs font-bold flex items-center justify-center">
+                          {idx === 0 ? 'SD' : `SD${idx}`}
+                        </span>
+                        <div>
+                          <div className="text-xs font-bold text-slate-900">{diag.name}</div>
+                          <div className="text-[11px] text-slate-500">{diag.level}</div>
+                        </div>
+                      </div>
+                      <div className="text-[11px] text-slate-400 font-medium">
+                        {diag.elementCount} elements
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex items-center justify-end gap-3">
+              <button 
+                type="button"
+                onClick={() => setInfoModelPrompt(null)}
+                className="px-4 py-2.5 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition-all text-xs cursor-pointer shadow-xs"
+              >
+                Cancel
+              </button>
+              <button 
+                type="button"
+                onClick={confirmGenerateDiagrams}
+                className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-all shadow-lg shadow-indigo-100 text-xs cursor-pointer"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                Generate Diagrams & Open Model
               </button>
             </div>
           </div>

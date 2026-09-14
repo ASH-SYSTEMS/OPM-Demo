@@ -10,10 +10,14 @@ import {
   LogicalElement, 
   LogicalLink, 
   VisualElement, 
-  VisualLink 
+  VisualLink,
+  VisualTagStyle
 } from '../types';
 
-export function generateOPL(logical: { elements: LogicalElement[], links: LogicalLink[] }, visual?: { elements: VisualElement[], links: VisualLink[] }): string[] {
+export function generateOPL(
+  logical: { elements: LogicalElement[], links: LogicalLink[] }, 
+  visual?: { elements: VisualElement[], links: VisualLink[], tagStyles?: VisualTagStyle[] }
+): string[] {
   const sentences: string[] = [];
   
   // Helper to format consistent lists: A, B, and C
@@ -243,6 +247,37 @@ export function generateOPL(logical: { elements: LogicalElement[], links: Logica
     } else {
       sentences.push(`${formatList(targets)} are instances of ${sourceName}.`);
     }
+  });
+
+  // 4b. TAGGED STRUCTURAL (user-defined tagged structural relations, e.g. "supports", "contains")
+  interface TaggedTarget {
+    name: string;
+    cardinality?: string;
+  }
+  const taggedStructuralMap = new Map<string, { sourceName: string; tag: string; targets: TaggedTarget[] }>();
+
+  remainingLinks.filter(l => l.type === LinkType.TAGGED_STRUCTURAL).forEach(link => {
+    const s = visibleElements.find(e => e.id === link.sourceId);
+    const t = visibleElements.find(e => e.id === link.targetId);
+    if (s && t) {
+      const sName = getElementName(s);
+      const tName = getElementName(t);
+      const rawTag = link.tag?.trim() || 'relates to';
+      const key = `${sName}:::${rawTag.toLowerCase()}`;
+      
+      if (!taggedStructuralMap.has(key)) {
+        taggedStructuralMap.set(key, { sourceName: sName, tag: rawTag, targets: [] });
+      }
+      taggedStructuralMap.get(key)!.targets.push({
+        name: tName,
+        cardinality: link.targetCardinality
+      });
+    }
+  });
+
+  taggedStructuralMap.forEach(({ sourceName, tag, targets }) => {
+    const targetDescs = targets.map(tgt => tgt.cardinality ? `${tgt.cardinality} ${tgt.name}` : tgt.name);
+    sentences.push(`${sourceName} ${tag} ${formatList(targetDescs)}.`);
   });
 
   // 5. AGENT (handles)
